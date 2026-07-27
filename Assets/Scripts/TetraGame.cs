@@ -18,6 +18,7 @@ public sealed class TetraGame : MonoBehaviour
     Vector2Int[] cells;
     Vector2Int pivot;
     int currentType, heldType = -1;
+    Vector2Int gravity = Vector2Int.down;
     float dropTimer, dropInterval = .72f;
     int score, lines;
     bool gameOver, paused, scoreRecorded, gameStarted, holdUsed;
@@ -70,12 +71,15 @@ public sealed class TetraGame : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.LeftArrow)) TryMove(Vector2Int.left);
         if (Input.GetKeyDown(KeyCode.RightArrow)) TryMove(Vector2Int.right);
         if (Input.GetKeyDown(KeyCode.DownArrow)) StepDown();
-        if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.X)) TryRotate(1);
-        if (Input.GetKeyDown(KeyCode.Z)) TryRotate(-1);
+        if (Input.GetKeyDown(KeyCode.W)) SetGravity(Vector2Int.up);
+        if (Input.GetKeyDown(KeyCode.A)) SetGravity(Vector2Int.left);
+        if (Input.GetKeyDown(KeyCode.S)) SetGravity(Vector2Int.down);
+        if (Input.GetKeyDown(KeyCode.D)) SetGravity(Vector2Int.right);
+        if (Input.GetKeyDown(KeyCode.UpArrow)) TryRotate(1);
         if (Input.GetKeyDown(KeyCode.LeftShift) || Input.GetKeyDown(KeyCode.RightShift)) HoldPiece();
-        if (Input.GetKeyDown(KeyCode.Space)) { while (StepDown()) { } Play(dropSound); }
+        if (Input.GetKeyDown(KeyCode.Space)) { while (StepGravity()) { } Play(dropSound); }
         dropTimer += Time.deltaTime;
-        if (dropTimer >= dropInterval) { dropTimer = 0; StepDown(); }
+        if (dropTimer >= dropInterval) { dropTimer = 0; StepGravity(); }
     }
 
     void CreateWorld()
@@ -146,7 +150,7 @@ public sealed class TetraGame : MonoBehaviour
         ClearTransforms(falling); ClearTransforms(ghost);
         System.Array.Clear(settled, 0, settled.Length); nextPieces.Clear();
         for (int i = 0; i < 3; i++) nextPieces.Enqueue(Random.Range(0, 7));
-        score = lines = 0; heldType = -1; holdUsed = false; scoreRecorded = false; paused = gameOver = false; dropInterval = .72f; Spawn();
+        score = lines = 0; gravity = Vector2Int.down; heldType = -1; holdUsed = false; scoreRecorded = false; paused = gameOver = false; dropInterval = .72f; Spawn();
     }
 
     void StartGame()
@@ -168,10 +172,17 @@ public sealed class TetraGame : MonoBehaviour
     void SpawnType(int type)
     {
         currentType = type;
-        cells = Shape(type); pivot = new Vector2Int(4, 18);
+        cells = Shape(type); pivot = SpawnPivot();
         foreach (var ignored in cells) falling.Add(CreateBlock(colors[type], "Falling Tetromino", .91f));
         if (!Valid(cells, pivot)) { gameOver = true; RecordScore(); Play(gameOverSound); return; }
         RenderFalling(); UpdateGhost(type);
+    }
+    Vector2Int SpawnPivot()
+    {
+        if (gravity == Vector2Int.up) return new Vector2Int(4, 1);
+        if (gravity == Vector2Int.left) return new Vector2Int(7, 9);
+        if (gravity == Vector2Int.right) return new Vector2Int(2, 9);
+        return new Vector2Int(4, 18);
     }
 
     static Vector2Int[] Shape(int type) => type switch {
@@ -209,10 +220,16 @@ public sealed class TetraGame : MonoBehaviour
         for (int i = 0; i < cells.Length; i++) rotated[i] = direction > 0 ? new Vector2Int(-cells[i].y, cells[i].x) : new Vector2Int(cells[i].y, -cells[i].x);
         if (Valid(rotated, pivot)) { cells = rotated; RenderFalling(); UpdateGhostColor(); Play(rotateSound); }
     }
-    bool StepDown()
+    bool StepGravity()
     {
-        if (Valid(cells, pivot + Vector2Int.down)) { pivot += Vector2Int.down; RenderFalling(); UpdateGhostColor(); return true; }
+        if (Valid(cells, pivot + gravity)) { pivot += gravity; RenderFalling(); UpdateGhostColor(); return true; }
         Lock(); return false;
+    }
+    // Down Arrow keeps its original soft-drop behavior even after gravity is redirected.
+    void StepDown()
+    {
+        if (Valid(cells, pivot + Vector2Int.down)) { pivot += Vector2Int.down; RenderFalling(); UpdateGhostColor(); return; }
+        if (gravity == Vector2Int.down) Lock();
     }
     void Lock()
     {
@@ -227,21 +244,39 @@ public sealed class TetraGame : MonoBehaviour
         else { int swapType = heldType; heldType = currentType; SpawnType(swapType); }
         holdUsed = true; Play(holdSound);
     }
+    void SetGravity(Vector2Int direction)
+    {
+        if (direction == gravity) return;
+        gravity = direction;
+        UpdateGhostColor(); Play(rotateSound);
+    }
     void ClearLines()
     {
-        int removed = 0;
-        for (int y = 0; y < Height; y++)
-        {
-            bool full = true; for (int x = 0; x < Width; x++) if (!settled[x, y]) { full = false; break; }
-            if (!full) continue;
-            for (int x = 0; x < Width; x++) Destroy(settled[x, y].gameObject);
-            for (int yy = y; yy < Height - 1; yy++) for (int x = 0; x < Width; x++) { settled[x, yy] = settled[x, yy + 1]; if (settled[x, yy]) settled[x, yy].position += Vector3.down; }
-            for (int x = 0; x < Width; x++) settled[x, Height - 1] = null; y--; removed++;
-        }
+        int removed = gravity == Vector2Int.down ? ClearDownRows() : gravity == Vector2Int.up ? ClearUpRows() : gravity == Vector2Int.left ? ClearLeftColumns() : ClearRightColumns();
         if (removed > 0) { lines += removed; score += removed * removed * 100; dropInterval = Mathf.Max(.12f, .72f - lines * .015f); Play(clearSound); }
     }
+    bool FullRow(int y) { for (int x = 0; x < Width; x++) if (!settled[x, y]) return false; return true; }
+    bool FullColumn(int x) { for (int y = 0; y < Height; y++) if (!settled[x, y]) return false; return true; }
+    void DestroyRow(int y) { for (int x = 0; x < Width; x++) Destroy(settled[x, y].gameObject); }
+    void DestroyColumn(int x) { for (int y = 0; y < Height; y++) Destroy(settled[x, y].gameObject); }
+    int ClearDownRows()
+    {
+        int removed = 0; for (int y = 0; y < Height; y++) { if (!FullRow(y)) continue; DestroyRow(y); for (int yy = y; yy < Height - 1; yy++) for (int x = 0; x < Width; x++) { settled[x, yy] = settled[x, yy + 1]; if (settled[x, yy]) settled[x, yy].position += Vector3.down; } for (int x = 0; x < Width; x++) settled[x, Height - 1] = null; y--; removed++; } return removed;
+    }
+    int ClearUpRows()
+    {
+        int removed = 0; for (int y = Height - 1; y >= 0; y--) { if (!FullRow(y)) continue; DestroyRow(y); for (int yy = y; yy > 0; yy--) for (int x = 0; x < Width; x++) { settled[x, yy] = settled[x, yy - 1]; if (settled[x, yy]) settled[x, yy].position += Vector3.up; } for (int x = 0; x < Width; x++) settled[x, 0] = null; y++; removed++; } return removed;
+    }
+    int ClearLeftColumns()
+    {
+        int removed = 0; for (int x = 0; x < Width; x++) { if (!FullColumn(x)) continue; DestroyColumn(x); for (int xx = x; xx < Width - 1; xx++) for (int y = 0; y < Height; y++) { settled[xx, y] = settled[xx + 1, y]; if (settled[xx, y]) settled[xx, y].position += Vector3.left; } for (int y = 0; y < Height; y++) settled[Width - 1, y] = null; x--; removed++; } return removed;
+    }
+    int ClearRightColumns()
+    {
+        int removed = 0; for (int x = Width - 1; x >= 0; x--) { if (!FullColumn(x)) continue; DestroyColumn(x); for (int xx = x; xx > 0; xx--) for (int y = 0; y < Height; y++) { settled[xx, y] = settled[xx - 1, y]; if (settled[xx, y]) settled[xx, y].position += Vector3.right; } for (int y = 0; y < Height; y++) settled[0, y] = null; x++; removed++; } return removed;
+    }
     void RenderFalling() { for (int i = 0; i < falling.Count; i++) falling[i].position = new Vector3(pivot.x + cells[i].x, pivot.y + cells[i].y, -.35f); }
-    Vector2Int LandingPivot() { var landing = pivot; while (Valid(cells, landing + Vector2Int.down)) landing += Vector2Int.down; return landing; }
+    Vector2Int LandingPivot() { var landing = pivot; while (Valid(cells, landing + gravity)) landing += gravity; return landing; }
     void UpdateGhost(int type) { ClearTransforms(ghost); for (int i = 0; i < cells.Length; i++) ghost.Add(CreateBlock(Dim(colors[type]), "Landing Ghost", .70f)); UpdateGhostColor(); }
     void UpdateGhostColor()
     {
@@ -304,6 +339,7 @@ public sealed class TetraGame : MonoBehaviour
         GUI.Label(new Rect(side.x + 12, side.y + 92, side.width - 20, 18), holdUsed ? "HOLD LOCKED" : "HOLD [SHIFT]", captionStyle);
         if (heldType >= 0) DrawPreview(side.x + 14, side.y + 113, heldType, 11);
         else GUI.Label(new Rect(side.x + 12, side.y + 120, side.width - 24, 18), "EMPTY", rankStyle);
+        GUI.Label(new Rect(side.x + 12, side.y + 148, side.width - 24, 18), "GRAVITY " + GravityName(), rankStyle);
         DrawRect(new Rect(side.x + 12, side.y + 170, side.width - 24, 1), new Color(.38f, .36f, .71f));
         GUI.Label(new Rect(side.x + 12, side.y + 185, side.width - 24, 20), "LINES", statStyle); GUI.Label(new Rect(side.x + 12, side.y + 200, side.width - 24, 28), lines.ToString(), valueStyle);
         GUI.Label(new Rect(side.x + 12, side.y + 245, side.width - 24, 20), "LEVEL", statStyle); GUI.Label(new Rect(side.x + 12, side.y + 260, side.width - 24, 28), (1 + lines / 10).ToString(), valueStyle);
@@ -315,7 +351,7 @@ public sealed class TetraGame : MonoBehaviour
         GUI.Label(new Rect(side.x + 12, side.y + 480, side.width - 20, 18), "LIVE SCORES", captionStyle);
         DrawOnlineScores(side.x + 12, side.y + 500, side.width - 24, 3);
         GUI.Label(new Rect(25, 716, 380, 20), gameOver ? "Game over. Press R to play again." : "Playing. Keyboard focus is captured.", captionStyle);
-        GUI.Label(new Rect(22, 748, 386, 42), "ARROWS move/drop   Z / X rotate   SPACE hard drop   SHIFT hold\nR restart   P pause   L refresh   ESC quit", controlStyle);
+        GUI.Label(new Rect(22, 748, 386, 42), "ARROWS move/drop/rotate   SPACE hard drop   SHIFT hold\nW/A/S/D gravity   R restart   P pause   L refresh   ESC quit", controlStyle);
         if (gameOver) { DrawRect(new Rect(board.x + 12, 380, board.width - 24, 78), new Color(.05f, .04f, .17f, .92f)); GUI.Label(new Rect(board.x + 12, 388, board.width - 24, 60), "GAME OVER\nPress R to restart", messageStyle); }
         else if (paused) { DrawRect(new Rect(board.x + 12, 390, board.width - 24, 55), new Color(.05f, .04f, .17f, .92f)); GUI.Label(new Rect(board.x + 12, 395, board.width - 24, 42), "PAUSED", messageStyle); }
         GUI.matrix = Matrix4x4.identity;
@@ -372,5 +408,12 @@ public sealed class TetraGame : MonoBehaviour
             var entry = entries[i];
             GUI.Label(new Rect(x, y + i * 19, width, 18), (i + 1) + ".  " + entry.name + "  " + entry.score.ToString("000000"), new GUIStyle(rankStyle) { alignment = alignment });
         }
+    }
+    string GravityName()
+    {
+        if (gravity == Vector2Int.up) return "UP";
+        if (gravity == Vector2Int.left) return "LEFT";
+        if (gravity == Vector2Int.right) return "RIGHT";
+        return "DOWN";
     }
 }
