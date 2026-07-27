@@ -72,7 +72,7 @@ public sealed class TetraGame : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.DownArrow)) StepDown();
         if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.X)) TryRotate(1);
         if (Input.GetKeyDown(KeyCode.Z)) TryRotate(-1);
-        if (Input.GetKeyDown(KeyCode.C)) HoldPiece();
+        if (Input.GetKeyDown(KeyCode.LeftShift) || Input.GetKeyDown(KeyCode.RightShift)) HoldPiece();
         if (Input.GetKeyDown(KeyCode.Space)) { while (StepDown()) { } Play(dropSound); }
         dropTimer += Time.deltaTime;
         if (dropTimer >= dropInterval) { dropTimer = 0; StepDown(); }
@@ -301,7 +301,7 @@ public sealed class TetraGame : MonoBehaviour
         int[] queued = nextPieces.Count == 3 ? nextPieces.ToArray() : new[] { 0, 0, 0 };
         GUI.Label(new Rect(side.x + 12, side.y + 15, side.width - 20, 20), "NEXT", captionStyle);
         DrawPreview(side.x + 14, side.y + 42, queued[0], 13);
-        GUI.Label(new Rect(side.x + 12, side.y + 92, side.width - 20, 18), holdUsed ? "HOLD LOCKED" : "HOLD  [C]", captionStyle);
+        GUI.Label(new Rect(side.x + 12, side.y + 92, side.width - 20, 18), holdUsed ? "HOLD LOCKED" : "HOLD [SHIFT]", captionStyle);
         if (heldType >= 0) DrawPreview(side.x + 14, side.y + 113, heldType, 11);
         else GUI.Label(new Rect(side.x + 12, side.y + 120, side.width - 24, 18), "EMPTY", rankStyle);
         DrawRect(new Rect(side.x + 12, side.y + 170, side.width - 24, 1), new Color(.38f, .36f, .71f));
@@ -315,7 +315,7 @@ public sealed class TetraGame : MonoBehaviour
         GUI.Label(new Rect(side.x + 12, side.y + 480, side.width - 20, 18), "LIVE SCORES", captionStyle);
         DrawOnlineScores(side.x + 12, side.y + 500, side.width - 24, 3);
         GUI.Label(new Rect(25, 716, 380, 20), gameOver ? "Game over. Press R to play again." : "Playing. Keyboard focus is captured.", captionStyle);
-        GUI.Label(new Rect(22, 748, 386, 42), "ARROWS move/drop   Z / X rotate   SPACE hard drop   C hold\nR restart   P pause   L refresh   ESC quit", controlStyle);
+        GUI.Label(new Rect(22, 748, 386, 42), "ARROWS move/drop   Z / X rotate   SPACE hard drop   SHIFT hold\nR restart   P pause   L refresh   ESC quit", controlStyle);
         if (gameOver) { DrawRect(new Rect(board.x + 12, 380, board.width - 24, 78), new Color(.05f, .04f, .17f, .92f)); GUI.Label(new Rect(board.x + 12, 388, board.width - 24, 60), "GAME OVER\nPress R to restart", messageStyle); }
         else if (paused) { DrawRect(new Rect(board.x + 12, 390, board.width - 24, 55), new Color(.05f, .04f, .17f, .92f)); GUI.Label(new Rect(board.x + 12, 395, board.width - 24, 42), "PAUSED", messageStyle); }
         GUI.matrix = Matrix4x4.identity;
