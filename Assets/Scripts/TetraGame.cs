@@ -21,7 +21,7 @@ public sealed class TetraGame : MonoBehaviour
     Vector2Int gravity = Vector2Int.down;
     int stage = 1;
     float stageTimer;
-    const float StageDuration = 300f;
+    const float StageDuration = 180f;
     float dropTimer, dropInterval = .72f;
     int score, lines;
     bool gameOver, paused, scoreRecorded, gameStarted, holdUsed;
@@ -76,7 +76,8 @@ public sealed class TetraGame : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.LeftArrow)) TryMove(Vector2Int.left);
         if (Input.GetKeyDown(KeyCode.RightArrow)) TryMove(Vector2Int.right);
         if (Input.GetKeyDown(KeyCode.DownArrow)) StepGravity();
-        if (Input.GetKeyDown(KeyCode.UpArrow)) TryRotate(1);
+        if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.X)) TryRotate(1);
+        if (Input.GetKeyDown(KeyCode.Z)) TryRotate(-1);
         if (Input.GetKeyDown(KeyCode.LeftShift) || Input.GetKeyDown(KeyCode.RightShift)) HoldPiece();
         if (Input.GetKeyDown(KeyCode.Space)) { while (StepGravity()) { } Play(dropSound); }
         dropTimer += Time.deltaTime;
@@ -355,20 +356,20 @@ public sealed class TetraGame : MonoBehaviour
         GUI.Label(new Rect(side.x + 12, side.y + 92, side.width - 20, 18), holdUsed ? "HOLD LOCKED" : "HOLD [SHIFT]", captionStyle);
         if (heldType >= 0) DrawPreview(side.x + 14, side.y + 113, heldType, 11);
         else GUI.Label(new Rect(side.x + 12, side.y + 120, side.width - 24, 18), "EMPTY", rankStyle);
-        GUI.Label(new Rect(side.x + 12, side.y + 148, side.width - 24, 18), "GRAVITY " + GravityName(), rankStyle);
-        DrawRect(new Rect(side.x + 12, side.y + 170, side.width - 24, 1), new Color(.38f, .36f, .71f));
-        GUI.Label(new Rect(side.x + 12, side.y + 185, side.width - 24, 20), "LINES", statStyle); GUI.Label(new Rect(side.x + 12, side.y + 200, side.width - 24, 28), lines.ToString(), valueStyle);
-        GUI.Label(new Rect(side.x + 12, side.y + 245, side.width - 24, 20), "STAGE", statStyle); GUI.Label(new Rect(side.x + 12, side.y + 260, side.width - 24, 28), stage.ToString(), valueStyle);
-        GUI.Label(new Rect(side.x + 12, side.y + 292, side.width - 24, 18), "FLIP " + FlipCountdown(), rankStyle);
-        DrawRect(new Rect(side.x + 12, side.y + 308, side.width - 24, 1), new Color(.38f, .36f, .71f));
-        GUI.Label(new Rect(side.x + 12, side.y + 324, side.width - 20, 20), "UP NEXT", captionStyle);
-        DrawPreview(side.x + 14, side.y + 352, queued[1], 9);
-        DrawPreview(side.x + 14, side.y + 414, queued[2], 9);
-        DrawRect(new Rect(side.x + 12, side.y + 468, side.width - 24, 1), new Color(.38f, .36f, .71f));
-        GUI.Label(new Rect(side.x + 12, side.y + 480, side.width - 20, 18), "LIVE SCORES", captionStyle);
-        DrawOnlineScores(side.x + 12, side.y + 500, side.width - 24, 3);
+        GUI.Label(new Rect(side.x + 12, side.y + 137, side.width - 24, 18), "FLIP " + FlipCountdown(), rankStyle);
+        GUI.Label(new Rect(side.x + 12, side.y + 159, side.width - 24, 18), "GRAVITY " + GravityName(), rankStyle);
+        DrawRect(new Rect(side.x + 12, side.y + 182, side.width - 24, 1), new Color(.38f, .36f, .71f));
+        GUI.Label(new Rect(side.x + 12, side.y + 197, side.width - 24, 20), "LINES", statStyle); GUI.Label(new Rect(side.x + 12, side.y + 212, side.width - 24, 28), lines.ToString(), valueStyle);
+        GUI.Label(new Rect(side.x + 12, side.y + 257, side.width - 24, 20), "STAGE", statStyle); GUI.Label(new Rect(side.x + 12, side.y + 272, side.width - 24, 28), stage.ToString(), valueStyle);
+        DrawRect(new Rect(side.x + 12, side.y + 318, side.width - 24, 1), new Color(.38f, .36f, .71f));
+        GUI.Label(new Rect(side.x + 12, side.y + 334, side.width - 20, 20), "UP NEXT", captionStyle);
+        DrawPreview(side.x + 14, side.y + 362, queued[1], 9);
+        DrawPreview(side.x + 14, side.y + 424, queued[2], 9);
+        DrawRect(new Rect(side.x + 12, side.y + 476, side.width - 24, 1), new Color(.38f, .36f, .71f));
+        GUI.Label(new Rect(side.x + 12, side.y + 488, side.width - 20, 18), "LIVE SCORES", captionStyle);
+        DrawOnlineScores(side.x + 12, side.y + 508, side.width - 24, 3);
         GUI.Label(new Rect(25, 716, 380, 20), gameOver ? "Game over. Press R to play again." : "Playing. Keyboard focus is captured.", captionStyle);
-        GUI.Label(new Rect(22, 748, 386, 42), "ARROWS move/drop/rotate   SPACE hard drop   SHIFT hold\nGRID FLIPS EVERY 5 MINUTES   R restart   P pause   L refresh", controlStyle);
+        GUI.Label(new Rect(22, 748, 386, 42), "ARROWS move/drop   UP/X rotate right   Z rotate left   SHIFT hold\nGRID FLIPS EVERY 3 MINUTES   R restart   P pause   L refresh", controlStyle);
         if (gameOver) { DrawRect(new Rect(board.x + 12, 380, board.width - 24, 78), new Color(.05f, .04f, .17f, .92f)); GUI.Label(new Rect(board.x + 12, 388, board.width - 24, 60), "GAME OVER\nPress R to restart", messageStyle); }
         else if (paused) { DrawRect(new Rect(board.x + 12, 390, board.width - 24, 55), new Color(.05f, .04f, .17f, .92f)); GUI.Label(new Rect(board.x + 12, 395, board.width - 24, 42), "PAUSED", messageStyle); }
         GUI.matrix = Matrix4x4.identity;
