@@ -30,7 +30,9 @@ public sealed class TetraGame : MonoBehaviour
     Texture2D pixel, playerNameBackground;
     Shader gameplayShader;
     AudioSource audioSource;
+    AudioSource musicSource;
     AudioClip moveSound, rotateSound, dropSound, holdSound, clearSound, gameOverSound;
+    AudioClip musicClip;
     GUIStyle titleStyle, captionStyle, statStyle, valueStyle, controlStyle, messageStyle, rankStyle, menuTitleStyle, startStyle, playerNameStyle;
     Camera boardCamera;
     OnlineLeaderboardClient onlineLeaderboard;
@@ -53,7 +55,12 @@ public sealed class TetraGame : MonoBehaviour
         boardCamera.enabled = false;
     }
 
-    void OnDestroy() { if (pixel) Destroy(pixel); if (playerNameBackground) Destroy(playerNameBackground); }
+    void OnDestroy()
+    {
+        if (pixel) Destroy(pixel); if (playerNameBackground) Destroy(playerNameBackground);
+        if (moveSound) Destroy(moveSound); if (rotateSound) Destroy(rotateSound); if (dropSound) Destroy(dropSound);
+        if (holdSound) Destroy(holdSound); if (clearSound) Destroy(clearSound); if (gameOverSound) Destroy(gameOverSound); if (musicClip) Destroy(musicClip);
+    }
 
     void Update()
     {
@@ -107,6 +114,8 @@ public sealed class TetraGame : MonoBehaviour
         moveSound = MakeTone("Move", 330, .045f); rotateSound = MakeTone("Rotate", 520, .07f);
         dropSound = MakeTone("Drop", 125, .11f); holdSound = MakeTone("Hold", 700, .10f);
         clearSound = MakeTone("Clear", 880, .18f); gameOverSound = MakeTone("GameOver", 150, .35f);
+        musicSource = gameObject.AddComponent<AudioSource>(); musicSource.playOnAwake = false; musicSource.loop = true; musicSource.volume = .14f;
+        musicClip = MakeRetroLoop(); musicSource.clip = musicClip; musicSource.Play();
     }
 
     AudioClip MakeTone(string clipName, float frequency, float seconds)
@@ -121,6 +130,24 @@ public sealed class TetraGame : MonoBehaviour
         var clip = AudioClip.Create(clipName, samples, 1, sampleRate, false); clip.SetData(data, 0); return clip;
     }
     void Play(AudioClip clip) { if (audioSource && clip) audioSource.PlayOneShot(clip); }
+    AudioClip MakeRetroLoop()
+    {
+        const int sampleRate = 44100, steps = 32;
+        const float stepSeconds = .18f;
+        float[] melody = { 523.25f, 659.25f, 783.99f, 659.25f, 587.33f, 698.46f, 880f, 698.46f, 493.88f, 587.33f, 739.99f, 587.33f, 440f, 523.25f, 659.25f, 523.25f };
+        int samplesPerStep = Mathf.RoundToInt(sampleRate * stepSeconds), total = samplesPerStep * steps;
+        var data = new float[total];
+        for (int i = 0; i < total; i++)
+        {
+            int step = i / samplesPerStep, index = step % melody.Length, within = i % samplesPerStep;
+            float t = within / (float)sampleRate, envelope = Mathf.Min(1f, within / 350f) * Mathf.Min(1f, (samplesPerStep - within) / 1200f);
+            float lead = Mathf.Sin(2f * Mathf.PI * melody[index] * t) >= 0 ? 1f : -1f;
+            float bassFrequency = melody[(step / 2) % melody.Length] * .25f;
+            float bass = Mathf.Sin(2f * Mathf.PI * bassFrequency * t) >= 0 ? 1f : -1f;
+            data[i] = (lead * .12f + bass * .055f) * envelope;
+        }
+        var clip = AudioClip.Create("RetroLoop", total, 1, sampleRate, false); clip.SetData(data, 0); return clip;
+    }
 
     // Keep the visual layout identical in the 430x820 Windows player and in any Unity Game-view aspect ratio.
     void UpdateLayout()
