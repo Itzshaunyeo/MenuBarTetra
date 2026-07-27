@@ -64,8 +64,9 @@ public sealed class TetraGame : MonoBehaviour
         cam.transform.position = new Vector3(4.5f, 9.5f, -25); cam.backgroundColor = new Color(.035f, .055f, .14f);
         var light = new GameObject("Soft Light").AddComponent<Light>();
         light.type = LightType.Directional; light.intensity = 1.15f; light.transform.rotation = Quaternion.Euler(32, -25, 0);
-        for (int x = 0; x <= Width; x++) MakeLine(new Vector3(x - .5f, Height / 2f - .5f, .45f), new Vector3(.026f, Height, .02f));
-        for (int y = 0; y <= Height; y++) MakeLine(new Vector3(Width / 2f - .5f, y - .5f, .45f), new Vector3(Width, .026f, .02f));
+        // Slightly thicker than one display pixel so no grid division disappears in Unity's scaled Game view.
+        for (int x = 0; x <= Width; x++) MakeLine(new Vector3(x - .5f, Height / 2f - .5f, .45f), new Vector3(.055f, Height, .02f));
+        for (int y = 0; y <= Height; y++) MakeLine(new Vector3(Width / 2f - .5f, y - .5f, .45f), new Vector3(Width, .055f, .02f));
         UpdateLayout();
     }
 
@@ -86,7 +87,11 @@ public sealed class TetraGame : MonoBehaviour
     {
         var line = GameObject.CreatePrimitive(PrimitiveType.Cube); line.name = "Grid";
         line.transform.position = position; line.transform.localScale = scale;
-        line.GetComponent<Renderer>().material.color = new Color(.22f, .28f, .53f); Destroy(line.GetComponent<Collider>());
+        var renderer = line.GetComponent<Renderer>();
+        renderer.material.color = new Color(.25f, .33f, .66f);
+        renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        renderer.receiveShadows = false;
+        Destroy(line.GetComponent<Collider>());
     }
 
     public void Restart()

@@ -6,6 +6,9 @@ public static class RuntimeBootstrap
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
     static void StartGame()
     {
+        // Script recompiles while Play mode is active can invoke this hook again.
+        // Keep the original game/cameras instead of layering a second board on top of it.
+        if (GameObject.Find("MenuBar Tetra") != null) return;
         Screen.SetResolution(430, 820, FullScreenMode.Windowed);
         Application.runInBackground = true;
         var game = new GameObject("MenuBar Tetra");
