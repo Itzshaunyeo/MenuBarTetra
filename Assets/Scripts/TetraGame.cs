@@ -133,6 +133,19 @@ public sealed class TetraGame : MonoBehaviour
             (Screen.height - (uiOrigin.y + (BoardRect.y + BoardRect.height) * uiScale)) / Screen.height,
             BoardRect.width * uiScale / Screen.width,
             BoardRect.height * uiScale / Screen.height);
+        ApplyBoardProjection();
+    }
+    // A vertical-only mirror preserves the board's left/right orientation during an inverted stage.
+    void ApplyBoardProjection()
+    {
+        boardCamera.transform.rotation = Quaternion.identity;
+        boardCamera.ResetProjectionMatrix();
+        if (stage % 2 == 0)
+        {
+            var projection = boardCamera.projectionMatrix;
+            projection.m11 *= -1f;
+            boardCamera.projectionMatrix = projection;
+        }
     }
 
     void MakeLine(Vector3 position, Vector3 scale)
@@ -152,7 +165,7 @@ public sealed class TetraGame : MonoBehaviour
         ClearTransforms(falling); ClearTransforms(ghost);
         System.Array.Clear(settled, 0, settled.Length); nextPieces.Clear();
         for (int i = 0; i < 3; i++) nextPieces.Enqueue(Random.Range(0, 7));
-        score = lines = 0; stage = 1; stageTimer = 0; gravity = Vector2Int.down; boardCamera.transform.rotation = Quaternion.identity; heldType = -1; holdUsed = false; scoreRecorded = false; paused = gameOver = false; dropInterval = .72f; Spawn();
+        score = lines = 0; stage = 1; stageTimer = 0; gravity = Vector2Int.down; ApplyBoardProjection(); heldType = -1; holdUsed = false; scoreRecorded = false; paused = gameOver = false; dropInterval = .72f; Spawn();
     }
 
     void StartGame()
@@ -253,7 +266,7 @@ public sealed class TetraGame : MonoBehaviour
         stage = nextStage;
         bool inverted = stage % 2 == 0;
         gravity = inverted ? Vector2Int.up : Vector2Int.down;
-        boardCamera.transform.rotation = Quaternion.Euler(0, 0, inverted ? 180 : 0);
+        ApplyBoardProjection();
         SettleStack(); Play(rotateSound);
     }
     void SettleStack()
@@ -356,8 +369,7 @@ public sealed class TetraGame : MonoBehaviour
         GUI.Label(new Rect(side.x + 12, side.y + 92, side.width - 20, 18), holdUsed ? "HOLD LOCKED" : "HOLD [SHIFT]", captionStyle);
         if (heldType >= 0) DrawPreview(side.x + 14, side.y + 113, heldType, 11);
         else GUI.Label(new Rect(side.x + 12, side.y + 120, side.width - 24, 18), "EMPTY", rankStyle);
-        GUI.Label(new Rect(side.x + 12, side.y + 137, side.width - 24, 18), "FLIP " + FlipCountdown(), rankStyle);
-        GUI.Label(new Rect(side.x + 12, side.y + 157, side.width - 24, 18), "GRAVITY " + GravityName(), rankStyle);
+        GUI.Label(new Rect(side.x + 12, side.y + 157, side.width - 24, 18), "FLIP " + FlipCountdown(), rankStyle);
         DrawRect(new Rect(side.x + 12, side.y + 182, side.width - 24, 1), new Color(.38f, .36f, .71f));
         GUI.Label(new Rect(side.x + 12, side.y + 197, side.width - 24, 20), "LINES", statStyle); GUI.Label(new Rect(side.x + 12, side.y + 212, side.width - 24, 28), lines.ToString(), valueStyle);
         GUI.Label(new Rect(side.x + 12, side.y + 257, side.width - 24, 20), "STAGE", statStyle); GUI.Label(new Rect(side.x + 12, side.y + 272, side.width - 24, 28), stage.ToString(), valueStyle);
@@ -426,13 +438,6 @@ public sealed class TetraGame : MonoBehaviour
             var entry = entries[i];
             GUI.Label(new Rect(x, y + i * 19, width, 18), (i + 1) + ".  " + entry.name + "  " + entry.score.ToString("000000"), new GUIStyle(rankStyle) { alignment = alignment });
         }
-    }
-    string GravityName()
-    {
-        if (gravity == Vector2Int.up) return "UP";
-        if (gravity == Vector2Int.left) return "LEFT";
-        if (gravity == Vector2Int.right) return "RIGHT";
-        return "DOWN";
     }
     string FlipCountdown()
     {
