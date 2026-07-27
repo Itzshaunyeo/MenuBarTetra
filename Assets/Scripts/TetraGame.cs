@@ -19,9 +19,10 @@ public sealed class TetraGame : MonoBehaviour
     Vector2Int pivot;
     float dropTimer, dropInterval = .72f;
     int score, lines;
-    bool gameOver, paused;
+    bool gameOver, paused, scoreRecorded;
     Texture2D pixel;
-    GUIStyle titleStyle, captionStyle, statStyle, valueStyle, controlStyle, messageStyle;
+    Shader gameplayShader;
+    GUIStyle titleStyle, captionStyle, statStyle, valueStyle, controlStyle, messageStyle, rankStyle;
     Camera boardCamera;
     float uiScale;
     Vector2 uiOrigin;
@@ -30,6 +31,9 @@ public sealed class TetraGame : MonoBehaviour
     {
         Application.targetFrameRate = 60;
         pixel = new Texture2D(1, 1); pixel.SetPixel(0, 0, Color.white); pixel.Apply();
+        // A Resources shader is guaranteed to ship in a player build; Unity's default runtime cube material is not.
+        gameplayShader = Resources.Load<Shader>("MenuBarTetraUnlit");
+        if (!gameplayShader) { Debug.LogError("MenuBarTetraUnlit shader is missing."); enabled = false; return; }
         CreateWorld();
         Restart();
     }
@@ -57,10 +61,10 @@ public sealed class TetraGame : MonoBehaviour
     {
         var backdrop = new GameObject("Backdrop Camera").AddComponent<Camera>();
         // This camera only paints the full-window background. It must not render the board a second time.
-        backdrop.depth = -2; backdrop.clearFlags = CameraClearFlags.SolidColor; backdrop.cullingMask = 0; backdrop.backgroundColor = new Color(.045f, .035f, .13f);
+        backdrop.depth = 50; backdrop.clearFlags = CameraClearFlags.SolidColor; backdrop.cullingMask = 0; backdrop.backgroundColor = new Color(.045f, .035f, .13f);
         var cam = new GameObject("Playfield Camera").AddComponent<Camera>();
         boardCamera = cam;
-        cam.depth = 0; cam.clearFlags = CameraClearFlags.SolidColor; cam.orthographic = true; cam.orthographicSize = 11.8f;
+        cam.depth = 51; cam.clearFlags = CameraClearFlags.SolidColor; cam.orthographic = true; cam.orthographicSize = 11.8f;
         cam.transform.position = new Vector3(4.5f, 9.5f, -25); cam.backgroundColor = new Color(.035f, .055f, .14f);
         var light = new GameObject("Soft Light").AddComponent<Light>();
         light.type = LightType.Directional; light.intensity = 1.15f; light.transform.rotation = Quaternion.Euler(32, -25, 0);
@@ -88,7 +92,7 @@ public sealed class TetraGame : MonoBehaviour
         var line = GameObject.CreatePrimitive(PrimitiveType.Cube); line.name = "Grid";
         line.transform.position = position; line.transform.localScale = scale;
         var renderer = line.GetComponent<Renderer>();
-        renderer.material.color = new Color(.25f, .33f, .66f);
+        renderer.material = MakeMaterial(new Color(.25f, .33f, .66f));
         renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         renderer.receiveShadows = false;
         Destroy(line.GetComponent<Collider>());
@@ -100,7 +104,7 @@ public sealed class TetraGame : MonoBehaviour
         ClearTransforms(falling); ClearTransforms(ghost);
         System.Array.Clear(settled, 0, settled.Length); nextPieces.Clear();
         for (int i = 0; i < 3; i++) nextPieces.Enqueue(Random.Range(0, 7));
-        score = lines = 0; paused = gameOver = false; dropInterval = .72f; Spawn();
+        score = lines = 0; scoreRecorded = false; paused = gameOver = false; dropInterval = .72f; Spawn();
     }
 
     void ClearTransforms(List<Transform> pieces) { foreach (var t in pieces) if (t) Destroy(t.gameObject); pieces.Clear(); }
@@ -110,7 +114,7 @@ public sealed class TetraGame : MonoBehaviour
         int type = nextPieces.Dequeue(); nextPieces.Enqueue(Random.Range(0, 7));
         cells = Shape(type); pivot = new Vector2Int(4, 18);
         foreach (var ignored in cells) falling.Add(CreateBlock(colors[type], "Falling Tetromino", .91f));
-        if (!Valid(cells, pivot)) { gameOver = true; return; }
+        if (!Valid(cells, pivot)) { gameOver = true; RecordScore(); return; }
         RenderFalling(); UpdateGhost(type);
     }
 
@@ -127,7 +131,14 @@ public sealed class TetraGame : MonoBehaviour
     Transform CreateBlock(Color color, string blockName, float scale)
     {
         var block = GameObject.CreatePrimitive(PrimitiveType.Cube); block.name = blockName; block.transform.localScale = Vector3.one * scale;
-        block.GetComponent<Renderer>().material.color = color; Destroy(block.GetComponent<Collider>()); return block.transform;
+        block.GetComponent<Renderer>().material = MakeMaterial(color); Destroy(block.GetComponent<Collider>()); return block.transform;
+    }
+
+    Material MakeMaterial(Color color)
+    {
+        var material = new Material(gameplayShader);
+        material.color = color;
+        return material;
     }
 
     bool Valid(Vector2Int[] test, Vector2Int at)
@@ -175,6 +186,27 @@ public sealed class TetraGame : MonoBehaviour
     }
     static Color Dim(Color color) { return Color.Lerp(new Color(.08f, .10f, .22f), color, .28f); }
 
+    int[] Leaderboard()
+    {
+        var scores = new int[5];
+        for (int i = 0; i < scores.Length; i++) scores[i] = PlayerPrefs.GetInt("MenuBarTetra.HighScore." + i, 0);
+        return scores;
+    }
+
+    void RecordScore()
+    {
+        if (scoreRecorded || score <= 0) return;
+        var scores = Leaderboard();
+        for (int i = 0; i < scores.Length; i++)
+        {
+            if (score <= scores[i]) continue;
+            for (int j = scores.Length - 1; j > i; j--) scores[j] = scores[j - 1];
+            scores[i] = score; break;
+        }
+        for (int i = 0; i < scores.Length; i++) PlayerPrefs.SetInt("MenuBarTetra.HighScore." + i, scores[i]);
+        PlayerPrefs.Save(); scoreRecorded = true;
+    }
+
     void SetStyles()
     {
         if (titleStyle != null) return;
@@ -184,6 +216,7 @@ public sealed class TetraGame : MonoBehaviour
         valueStyle = new GUIStyle(statStyle) { fontSize = 22, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleRight, normal = { textColor = Color.white } };
         controlStyle = new GUIStyle(statStyle) { fontSize = 11, alignment = TextAnchor.MiddleCenter, normal = { textColor = new Color(.65f, .69f, .9f) } };
         messageStyle = new GUIStyle(titleStyle) { fontSize = 23, alignment = TextAnchor.MiddleCenter, normal = { textColor = new Color(1f, .84f, .32f) } };
+        rankStyle = new GUIStyle(statStyle) { fontSize = 11, alignment = TextAnchor.MiddleLeft, normal = { textColor = new Color(.8f, .82f, 1f) } };
     }
     void DrawRect(Rect rect, Color color) { GUI.color = color; GUI.DrawTexture(rect, pixel); GUI.color = Color.white; }
     void DrawBorder(Rect rect, Color color, float thickness) { DrawRect(new Rect(rect.x, rect.y, rect.width, thickness), color); DrawRect(new Rect(rect.x, rect.yMax - thickness, rect.width, thickness), color); DrawRect(new Rect(rect.x, rect.y, thickness, rect.height), color); DrawRect(new Rect(rect.xMax - thickness, rect.y, thickness, rect.height), color); }
@@ -213,6 +246,14 @@ public sealed class TetraGame : MonoBehaviour
         GUI.Label(new Rect(side.x + 12, side.y + 286, side.width - 20, 20), "UP NEXT", captionStyle);
         DrawPreview(side.x + 14, side.y + 315, queued[1], 10);
         DrawPreview(side.x + 14, side.y + 385, queued[2], 10);
+        DrawRect(new Rect(side.x + 12, side.y + 462, side.width - 24, 1), new Color(.38f, .36f, .71f));
+        GUI.Label(new Rect(side.x + 12, side.y + 476, side.width - 20, 18), "TOP SCORES", captionStyle);
+        int[] highScores = Leaderboard();
+        for (int i = 0; i < 3; i++)
+        {
+            GUI.Label(new Rect(side.x + 12, side.y + 498 + i * 19, side.width - 24, 18),
+                (i + 1) + ".  " + (highScores[i] > 0 ? highScores[i].ToString("000000") : "------"), rankStyle);
+        }
         GUI.Label(new Rect(25, 716, 380, 20), gameOver ? "Game over. Press R to play again." : "Playing. Keyboard focus is captured.", captionStyle);
         GUI.Label(new Rect(22, 748, 386, 42), "ARROWS move/drop   Z / X rotate   SPACE hard drop\nR restart   P pause   ESC quit", controlStyle);
         if (gameOver) { DrawRect(new Rect(board.x + 12, 380, board.width - 24, 78), new Color(.05f, .04f, .17f, .92f)); GUI.Label(new Rect(board.x + 12, 388, board.width - 24, 60), "GAME OVER\nPress R to restart", messageStyle); }
