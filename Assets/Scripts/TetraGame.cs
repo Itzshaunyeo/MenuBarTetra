@@ -50,9 +50,10 @@ public sealed class TetraGame : MonoBehaviour
     void CreateWorld()
     {
         var backdrop = new GameObject("Backdrop Camera").AddComponent<Camera>();
-        backdrop.depth = -2; backdrop.clearFlags = CameraClearFlags.SolidColor; backdrop.backgroundColor = new Color(.045f, .035f, .13f);
+        // This camera only paints the full-window background. It must not render the board a second time.
+        backdrop.depth = -2; backdrop.clearFlags = CameraClearFlags.SolidColor; backdrop.cullingMask = 0; backdrop.backgroundColor = new Color(.045f, .035f, .13f);
         var cam = new GameObject("Playfield Camera").AddComponent<Camera>();
-        cam.depth = 0; cam.orthographic = true; cam.orthographicSize = 11f;
+        cam.depth = 0; cam.clearFlags = CameraClearFlags.SolidColor; cam.orthographic = true; cam.orthographicSize = 11f;
         cam.rect = new Rect(.065f, .15f, .60f, .67f);
         cam.transform.position = new Vector3(4.5f, 9.5f, -25); cam.backgroundColor = new Color(.035f, .055f, .14f);
         var light = new GameObject("Soft Light").AddComponent<Light>();
@@ -174,7 +175,8 @@ public sealed class TetraGame : MonoBehaviour
         GUI.Label(new Rect(Screen.width - 114, 28, 82, 35), score.ToString("000000"), valueStyle);
         DrawRect(board, new Color(.025f, .04f, .12f, .18f)); DrawBorder(board, new Color(.45f, .43f, .86f), 3);
         DrawRect(side, new Color(.12f, .10f, .32f)); DrawBorder(side, new Color(.34f, .33f, .69f), 2);
-        int[] queued = nextPieces.ToArray();
+        // The queue is initialized before the first frame, but keep the HUD safe while Unity is reloading scripts.
+        int[] queued = nextPieces.Count == 3 ? nextPieces.ToArray() : new[] { 0, 0, 0 };
         GUI.Label(new Rect(side.x + 12, side.y + 15, side.width - 20, 20), "NEXT", captionStyle);
         DrawPreview(side.x + 14, side.y + 43, queued[0], 15);
         DrawRect(new Rect(side.x + 12, side.y + 125, side.width - 24, 1), new Color(.38f, .36f, .71f));
