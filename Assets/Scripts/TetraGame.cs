@@ -133,19 +133,6 @@ public sealed class TetraGame : MonoBehaviour
             (Screen.height - (uiOrigin.y + (BoardRect.y + BoardRect.height) * uiScale)) / Screen.height,
             BoardRect.width * uiScale / Screen.width,
             BoardRect.height * uiScale / Screen.height);
-        ApplyBoardProjection();
-    }
-    // A vertical-only mirror preserves the board's left/right orientation during an inverted stage.
-    void ApplyBoardProjection()
-    {
-        boardCamera.transform.rotation = Quaternion.identity;
-        boardCamera.ResetProjectionMatrix();
-        if (stage % 2 == 0)
-        {
-            var projection = boardCamera.projectionMatrix;
-            projection.m11 *= -1f;
-            boardCamera.projectionMatrix = projection;
-        }
     }
 
     void MakeLine(Vector3 position, Vector3 scale)
@@ -165,7 +152,7 @@ public sealed class TetraGame : MonoBehaviour
         ClearTransforms(falling); ClearTransforms(ghost);
         System.Array.Clear(settled, 0, settled.Length); nextPieces.Clear();
         for (int i = 0; i < 3; i++) nextPieces.Enqueue(Random.Range(0, 7));
-        score = lines = 0; stage = 1; stageTimer = 0; gravity = Vector2Int.down; ApplyBoardProjection(); heldType = -1; holdUsed = false; scoreRecorded = false; paused = gameOver = false; dropInterval = .72f; Spawn();
+        score = lines = 0; stage = 1; stageTimer = 0; gravity = Vector2Int.down; boardCamera.transform.rotation = Quaternion.identity; heldType = -1; holdUsed = false; scoreRecorded = false; paused = gameOver = false; dropInterval = .72f; Spawn();
     }
 
     void StartGame()
@@ -266,8 +253,25 @@ public sealed class TetraGame : MonoBehaviour
         stage = nextStage;
         bool inverted = stage % 2 == 0;
         gravity = inverted ? Vector2Int.up : Vector2Int.down;
-        ApplyBoardProjection();
+        boardCamera.transform.rotation = Quaternion.identity;
+        FlipSettledStack(inverted);
         SettleStack(); Play(rotateSound);
+    }
+    // Rotate the established stack around the board's horizontal center so it changes stage with the playfield.
+    void FlipSettledStack(bool inverted)
+    {
+        var flipped = new Transform[Width, Height];
+        Quaternion rotation = Quaternion.Euler(0, 0, inverted ? 180 : 0);
+        for (int x = 0; x < Width; x++) for (int y = 0; y < Height; y++)
+        {
+            var block = settled[x, y];
+            if (!block) continue;
+            int newY = Height - 1 - y;
+            flipped[x, newY] = block;
+            block.position = new Vector3(block.position.x, newY, block.position.z);
+            block.rotation = rotation;
+        }
+        System.Array.Copy(flipped, settled, settled.Length);
     }
     void SettleStack()
     {
