@@ -17,13 +17,16 @@ public sealed class TetraGame : MonoBehaviour
     };
     Vector2Int[] cells;
     Vector2Int pivot;
+    int currentType, heldType = -1;
     float dropTimer, dropInterval = .72f;
     int score, lines;
-    bool gameOver, paused, scoreRecorded, gameStarted;
+    bool gameOver, paused, scoreRecorded, gameStarted, holdUsed;
     string playerName;
     float leaderboardRefreshTimer;
     Texture2D pixel, playerNameBackground;
     Shader gameplayShader;
+    AudioSource audioSource;
+    AudioClip moveSound, rotateSound, dropSound, holdSound, clearSound, gameOverSound;
     GUIStyle titleStyle, captionStyle, statStyle, valueStyle, controlStyle, messageStyle, rankStyle, menuTitleStyle, startStyle, playerNameStyle;
     Camera boardCamera;
     OnlineLeaderboardClient onlineLeaderboard;
@@ -39,6 +42,7 @@ public sealed class TetraGame : MonoBehaviour
         gameplayShader = Resources.Load<Shader>("MenuBarTetraUnlit");
         if (!gameplayShader) { Debug.LogError("MenuBarTetraUnlit shader is missing."); enabled = false; return; }
         CreateWorld();
+        CreateAudio();
         onlineLeaderboard = gameObject.AddComponent<OnlineLeaderboardClient>();
         playerName = PlayerPrefs.GetString("MenuBarTetra.PlayerName", "Player");
         onlineLeaderboard.Refresh();
@@ -68,7 +72,8 @@ public sealed class TetraGame : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.DownArrow)) StepDown();
         if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.X)) TryRotate(1);
         if (Input.GetKeyDown(KeyCode.Z)) TryRotate(-1);
-        if (Input.GetKeyDown(KeyCode.Space)) while (StepDown()) { }
+        if (Input.GetKeyDown(KeyCode.C)) HoldPiece();
+        if (Input.GetKeyDown(KeyCode.Space)) { while (StepDown()) { } Play(dropSound); }
         dropTimer += Time.deltaTime;
         if (dropTimer >= dropInterval) { dropTimer = 0; StepDown(); }
     }
@@ -89,6 +94,27 @@ public sealed class TetraGame : MonoBehaviour
         for (int y = 0; y <= Height; y++) MakeLine(new Vector3(Width / 2f - .5f, y - .5f, .45f), new Vector3(Width, .055f, .02f));
         UpdateLayout();
     }
+
+    void CreateAudio()
+    {
+        audioSource = gameObject.AddComponent<AudioSource>(); audioSource.playOnAwake = false; audioSource.volume = .28f;
+        moveSound = MakeTone("Move", 330, .045f); rotateSound = MakeTone("Rotate", 520, .07f);
+        dropSound = MakeTone("Drop", 125, .11f); holdSound = MakeTone("Hold", 700, .10f);
+        clearSound = MakeTone("Clear", 880, .18f); gameOverSound = MakeTone("GameOver", 150, .35f);
+    }
+
+    AudioClip MakeTone(string clipName, float frequency, float seconds)
+    {
+        int sampleRate = 44100, samples = Mathf.CeilToInt(sampleRate * seconds);
+        var data = new float[samples];
+        for (int i = 0; i < samples; i++)
+        {
+            float t = i / (float)sampleRate;
+            data[i] = Mathf.Sin(2f * Mathf.PI * frequency * t) * Mathf.Exp(-5f * t / seconds) * .45f;
+        }
+        var clip = AudioClip.Create(clipName, samples, 1, sampleRate, false); clip.SetData(data, 0); return clip;
+    }
+    void Play(AudioClip clip) { if (audioSource && clip) audioSource.PlayOneShot(clip); }
 
     // Keep the visual layout identical in the 430x820 Windows player and in any Unity Game-view aspect ratio.
     void UpdateLayout()
@@ -120,7 +146,7 @@ public sealed class TetraGame : MonoBehaviour
         ClearTransforms(falling); ClearTransforms(ghost);
         System.Array.Clear(settled, 0, settled.Length); nextPieces.Clear();
         for (int i = 0; i < 3; i++) nextPieces.Enqueue(Random.Range(0, 7));
-        score = lines = 0; scoreRecorded = false; paused = gameOver = false; dropInterval = .72f; Spawn();
+        score = lines = 0; heldType = -1; holdUsed = false; scoreRecorded = false; paused = gameOver = false; dropInterval = .72f; Spawn();
     }
 
     void StartGame()
@@ -137,9 +163,14 @@ public sealed class TetraGame : MonoBehaviour
     void Spawn()
     {
         int type = nextPieces.Dequeue(); nextPieces.Enqueue(Random.Range(0, 7));
+        SpawnType(type);
+    }
+    void SpawnType(int type)
+    {
+        currentType = type;
         cells = Shape(type); pivot = new Vector2Int(4, 18);
         foreach (var ignored in cells) falling.Add(CreateBlock(colors[type], "Falling Tetromino", .91f));
-        if (!Valid(cells, pivot)) { gameOver = true; RecordScore(); return; }
+        if (!Valid(cells, pivot)) { gameOver = true; RecordScore(); Play(gameOverSound); return; }
         RenderFalling(); UpdateGhost(type);
     }
 
@@ -171,12 +202,12 @@ public sealed class TetraGame : MonoBehaviour
         foreach (var c in test) { var p = at + c; if (p.x < 0 || p.x >= Width || p.y < 0 || p.y >= Height || settled[p.x, p.y]) return false; }
         return true;
     }
-    void TryMove(Vector2Int delta) { if (Valid(cells, pivot + delta)) { pivot += delta; RenderFalling(); UpdateGhostColor(); } }
+    void TryMove(Vector2Int delta) { if (Valid(cells, pivot + delta)) { pivot += delta; RenderFalling(); UpdateGhostColor(); Play(moveSound); } }
     void TryRotate(int direction)
     {
         var rotated = new Vector2Int[cells.Length];
         for (int i = 0; i < cells.Length; i++) rotated[i] = direction > 0 ? new Vector2Int(-cells[i].y, cells[i].x) : new Vector2Int(cells[i].y, -cells[i].x);
-        if (Valid(rotated, pivot)) { cells = rotated; RenderFalling(); UpdateGhostColor(); }
+        if (Valid(rotated, pivot)) { cells = rotated; RenderFalling(); UpdateGhostColor(); Play(rotateSound); }
     }
     bool StepDown()
     {
@@ -186,7 +217,15 @@ public sealed class TetraGame : MonoBehaviour
     void Lock()
     {
         for (int i = 0; i < cells.Length; i++) settled[pivot.x + cells[i].x, pivot.y + cells[i].y] = falling[i];
-        falling.Clear(); ClearTransforms(ghost); ClearLines(); Spawn();
+        falling.Clear(); ClearTransforms(ghost); ClearLines(); holdUsed = false; Spawn();
+    }
+    void HoldPiece()
+    {
+        if (holdUsed) return;
+        ClearTransforms(falling); ClearTransforms(ghost);
+        if (heldType < 0) { heldType = currentType; Spawn(); }
+        else { int swapType = heldType; heldType = currentType; SpawnType(swapType); }
+        holdUsed = true; Play(holdSound);
     }
     void ClearLines()
     {
@@ -199,7 +238,7 @@ public sealed class TetraGame : MonoBehaviour
             for (int yy = y; yy < Height - 1; yy++) for (int x = 0; x < Width; x++) { settled[x, yy] = settled[x, yy + 1]; if (settled[x, yy]) settled[x, yy].position += Vector3.down; }
             for (int x = 0; x < Width; x++) settled[x, Height - 1] = null; y--; removed++;
         }
-        if (removed > 0) { lines += removed; score += removed * removed * 100; dropInterval = Mathf.Max(.12f, .72f - lines * .015f); }
+        if (removed > 0) { lines += removed; score += removed * removed * 100; dropInterval = Mathf.Max(.12f, .72f - lines * .015f); Play(clearSound); }
     }
     void RenderFalling() { for (int i = 0; i < falling.Count; i++) falling[i].position = new Vector3(pivot.x + cells[i].x, pivot.y + cells[i].y, -.35f); }
     Vector2Int LandingPivot() { var landing = pivot; while (Valid(cells, landing + Vector2Int.down)) landing += Vector2Int.down; return landing; }
@@ -261,19 +300,22 @@ public sealed class TetraGame : MonoBehaviour
         // The queue is initialized before the first frame, but keep the HUD safe while Unity is reloading scripts.
         int[] queued = nextPieces.Count == 3 ? nextPieces.ToArray() : new[] { 0, 0, 0 };
         GUI.Label(new Rect(side.x + 12, side.y + 15, side.width - 20, 20), "NEXT", captionStyle);
-        DrawPreview(side.x + 14, side.y + 43, queued[0], 15);
-        DrawRect(new Rect(side.x + 12, side.y + 125, side.width - 24, 1), new Color(.38f, .36f, .71f));
-        GUI.Label(new Rect(side.x + 12, side.y + 143, side.width - 24, 20), "LINES", statStyle); GUI.Label(new Rect(side.x + 12, side.y + 158, side.width - 24, 28), lines.ToString(), valueStyle);
-        GUI.Label(new Rect(side.x + 12, side.y + 205, side.width - 24, 20), "LEVEL", statStyle); GUI.Label(new Rect(side.x + 12, side.y + 220, side.width - 24, 28), (1 + lines / 10).ToString(), valueStyle);
-        DrawRect(new Rect(side.x + 12, side.y + 270, side.width - 24, 1), new Color(.38f, .36f, .71f));
-        GUI.Label(new Rect(side.x + 12, side.y + 286, side.width - 20, 20), "UP NEXT", captionStyle);
-        DrawPreview(side.x + 14, side.y + 315, queued[1], 10);
-        DrawPreview(side.x + 14, side.y + 385, queued[2], 10);
-        DrawRect(new Rect(side.x + 12, side.y + 462, side.width - 24, 1), new Color(.38f, .36f, .71f));
-        GUI.Label(new Rect(side.x + 12, side.y + 476, side.width - 20, 18), "LIVE SCORES", captionStyle);
-        DrawOnlineScores(side.x + 12, side.y + 498, side.width - 24, 3);
+        DrawPreview(side.x + 14, side.y + 42, queued[0], 13);
+        GUI.Label(new Rect(side.x + 12, side.y + 92, side.width - 20, 18), holdUsed ? "HOLD LOCKED" : "HOLD  [C]", captionStyle);
+        if (heldType >= 0) DrawPreview(side.x + 14, side.y + 113, heldType, 11);
+        else GUI.Label(new Rect(side.x + 12, side.y + 120, side.width - 24, 18), "EMPTY", rankStyle);
+        DrawRect(new Rect(side.x + 12, side.y + 170, side.width - 24, 1), new Color(.38f, .36f, .71f));
+        GUI.Label(new Rect(side.x + 12, side.y + 185, side.width - 24, 20), "LINES", statStyle); GUI.Label(new Rect(side.x + 12, side.y + 200, side.width - 24, 28), lines.ToString(), valueStyle);
+        GUI.Label(new Rect(side.x + 12, side.y + 245, side.width - 24, 20), "LEVEL", statStyle); GUI.Label(new Rect(side.x + 12, side.y + 260, side.width - 24, 28), (1 + lines / 10).ToString(), valueStyle);
+        DrawRect(new Rect(side.x + 12, side.y + 308, side.width - 24, 1), new Color(.38f, .36f, .71f));
+        GUI.Label(new Rect(side.x + 12, side.y + 324, side.width - 20, 20), "UP NEXT", captionStyle);
+        DrawPreview(side.x + 14, side.y + 352, queued[1], 9);
+        DrawPreview(side.x + 14, side.y + 414, queued[2], 9);
+        DrawRect(new Rect(side.x + 12, side.y + 468, side.width - 24, 1), new Color(.38f, .36f, .71f));
+        GUI.Label(new Rect(side.x + 12, side.y + 480, side.width - 20, 18), "LIVE SCORES", captionStyle);
+        DrawOnlineScores(side.x + 12, side.y + 500, side.width - 24, 3);
         GUI.Label(new Rect(25, 716, 380, 20), gameOver ? "Game over. Press R to play again." : "Playing. Keyboard focus is captured.", captionStyle);
-        GUI.Label(new Rect(22, 748, 386, 42), "ARROWS move/drop   Z / X rotate   SPACE hard drop\nR restart   P pause   L refresh   ESC quit", controlStyle);
+        GUI.Label(new Rect(22, 748, 386, 42), "ARROWS move/drop   Z / X rotate   SPACE hard drop   C hold\nR restart   P pause   L refresh   ESC quit", controlStyle);
         if (gameOver) { DrawRect(new Rect(board.x + 12, 380, board.width - 24, 78), new Color(.05f, .04f, .17f, .92f)); GUI.Label(new Rect(board.x + 12, 388, board.width - 24, 60), "GAME OVER\nPress R to restart", messageStyle); }
         else if (paused) { DrawRect(new Rect(board.x + 12, 390, board.width - 24, 55), new Color(.05f, .04f, .17f, .92f)); GUI.Label(new Rect(board.x + 12, 395, board.width - 24, 42), "PAUSED", messageStyle); }
         GUI.matrix = Matrix4x4.identity;
