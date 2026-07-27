@@ -5,6 +5,8 @@ using UnityEngine;
 public sealed class TetraGame : MonoBehaviour
 {
     const int Width = 10, Height = 20;
+    const float DesignWidth = 430f, DesignHeight = 820f;
+    static readonly Rect BoardRect = new Rect(26, 130, 245, 570);
     readonly Transform[,] settled = new Transform[Width, Height];
     readonly List<Transform> falling = new List<Transform>(4);
     readonly List<Transform> ghost = new List<Transform>(4);
@@ -20,6 +22,9 @@ public sealed class TetraGame : MonoBehaviour
     bool gameOver, paused;
     Texture2D pixel;
     GUIStyle titleStyle, captionStyle, statStyle, valueStyle, controlStyle, messageStyle;
+    Camera boardCamera;
+    float uiScale;
+    Vector2 uiOrigin;
 
     void Awake()
     {
@@ -33,6 +38,7 @@ public sealed class TetraGame : MonoBehaviour
 
     void Update()
     {
+        UpdateLayout();
         if (Input.GetKeyDown(KeyCode.R)) { Restart(); return; }
         if (Input.GetKeyDown(KeyCode.Escape)) Application.Quit();
         if (Input.GetKeyDown(KeyCode.P) && !gameOver) paused = !paused;
@@ -53,13 +59,27 @@ public sealed class TetraGame : MonoBehaviour
         // This camera only paints the full-window background. It must not render the board a second time.
         backdrop.depth = -2; backdrop.clearFlags = CameraClearFlags.SolidColor; backdrop.cullingMask = 0; backdrop.backgroundColor = new Color(.045f, .035f, .13f);
         var cam = new GameObject("Playfield Camera").AddComponent<Camera>();
-        cam.depth = 0; cam.clearFlags = CameraClearFlags.SolidColor; cam.orthographic = true; cam.orthographicSize = 11f;
-        cam.rect = new Rect(.065f, .15f, .60f, .67f);
+        boardCamera = cam;
+        cam.depth = 0; cam.clearFlags = CameraClearFlags.SolidColor; cam.orthographic = true; cam.orthographicSize = 11.8f;
         cam.transform.position = new Vector3(4.5f, 9.5f, -25); cam.backgroundColor = new Color(.035f, .055f, .14f);
         var light = new GameObject("Soft Light").AddComponent<Light>();
         light.type = LightType.Directional; light.intensity = 1.15f; light.transform.rotation = Quaternion.Euler(32, -25, 0);
         for (int x = 0; x <= Width; x++) MakeLine(new Vector3(x - .5f, Height / 2f - .5f, .45f), new Vector3(.026f, Height, .02f));
         for (int y = 0; y <= Height; y++) MakeLine(new Vector3(Width / 2f - .5f, y - .5f, .45f), new Vector3(Width, .026f, .02f));
+        UpdateLayout();
+    }
+
+    // Keep the visual layout identical in the 430x820 Windows player and in any Unity Game-view aspect ratio.
+    void UpdateLayout()
+    {
+        uiScale = Mathf.Min(Screen.width / DesignWidth, Screen.height / DesignHeight);
+        uiOrigin = new Vector2((Screen.width - DesignWidth * uiScale) * .5f, (Screen.height - DesignHeight * uiScale) * .5f);
+        if (!boardCamera || Screen.width == 0 || Screen.height == 0) return;
+        boardCamera.rect = new Rect(
+            (uiOrigin.x + BoardRect.x * uiScale) / Screen.width,
+            (Screen.height - (uiOrigin.y + (BoardRect.y + BoardRect.height) * uiScale)) / Screen.height,
+            BoardRect.width * uiScale / Screen.width,
+            BoardRect.height * uiScale / Screen.height);
     }
 
     void MakeLine(Vector3 position, Vector3 scale)
@@ -165,14 +185,16 @@ public sealed class TetraGame : MonoBehaviour
 
     void OnGUI()
     {
+        UpdateLayout();
         SetStyles();
-        var board = new Rect(Screen.width * .05f, Screen.height * .145f, Screen.width * .63f, Screen.height * .68f);
-        var side = new Rect(Screen.width * .71f, Screen.height * .145f, Screen.width * .24f, Screen.height * .68f);
-        DrawRect(new Rect(16, 15, Screen.width - 32, 100), new Color(.12f, .10f, .32f));
-        DrawBorder(new Rect(16, 15, Screen.width - 32, Screen.height - 30), new Color(.35f, .34f, .73f), 2);
+        GUI.matrix = Matrix4x4.TRS(uiOrigin, Quaternion.identity, new Vector3(uiScale, uiScale, 1));
+        var board = BoardRect;
+        var side = new Rect(286, 130, 128, 570);
+        DrawRect(new Rect(16, 15, 398, 100), new Color(.12f, .10f, .32f));
+        DrawBorder(new Rect(16, 15, 398, 790), new Color(.35f, .34f, .73f), 2);
         GUI.Label(new Rect(31, 28, 230, 35), "MENU BAR TETRA", titleStyle);
         GUI.Label(new Rect(33, 62, 250, 20), paused ? "PAUSED - Press P to continue" : "Ready in the menu bar", captionStyle);
-        GUI.Label(new Rect(Screen.width - 114, 28, 82, 35), score.ToString("000000"), valueStyle);
+        GUI.Label(new Rect(300, 28, 82, 35), score.ToString("000000"), valueStyle);
         DrawRect(board, new Color(.025f, .04f, .12f, .18f)); DrawBorder(board, new Color(.45f, .43f, .86f), 3);
         DrawRect(side, new Color(.12f, .10f, .32f)); DrawBorder(side, new Color(.34f, .33f, .69f), 2);
         // The queue is initialized before the first frame, but keep the HUD safe while Unity is reloading scripts.
@@ -186,10 +208,11 @@ public sealed class TetraGame : MonoBehaviour
         GUI.Label(new Rect(side.x + 12, side.y + 286, side.width - 20, 20), "UP NEXT", captionStyle);
         DrawPreview(side.x + 14, side.y + 315, queued[1], 10);
         DrawPreview(side.x + 14, side.y + 385, queued[2], 10);
-        GUI.Label(new Rect(25, Screen.height - 118, Screen.width - 50, 20), gameOver ? "Game over. Press R to play again." : "Playing. Keyboard focus is captured.", captionStyle);
-        GUI.Label(new Rect(22, Screen.height - 85, Screen.width - 44, 42), "ARROWS move/drop   Z / X rotate   SPACE hard drop\nR restart   P pause   ESC quit", controlStyle);
-        if (gameOver) { DrawRect(new Rect(board.x + 12, Screen.height * .42f, board.width - 24, 78), new Color(.05f, .04f, .17f, .92f)); GUI.Label(new Rect(board.x + 12, Screen.height * .43f, board.width - 24, 60), "GAME OVER\nPress R to restart", messageStyle); }
-        else if (paused) { DrawRect(new Rect(board.x + 12, Screen.height * .44f, board.width - 24, 55), new Color(.05f, .04f, .17f, .92f)); GUI.Label(new Rect(board.x + 12, Screen.height * .445f, board.width - 24, 42), "PAUSED", messageStyle); }
+        GUI.Label(new Rect(25, 716, 380, 20), gameOver ? "Game over. Press R to play again." : "Playing. Keyboard focus is captured.", captionStyle);
+        GUI.Label(new Rect(22, 748, 386, 42), "ARROWS move/drop   Z / X rotate   SPACE hard drop\nR restart   P pause   ESC quit", controlStyle);
+        if (gameOver) { DrawRect(new Rect(board.x + 12, 380, board.width - 24, 78), new Color(.05f, .04f, .17f, .92f)); GUI.Label(new Rect(board.x + 12, 388, board.width - 24, 60), "GAME OVER\nPress R to restart", messageStyle); }
+        else if (paused) { DrawRect(new Rect(board.x + 12, 390, board.width - 24, 55), new Color(.05f, .04f, .17f, .92f)); GUI.Label(new Rect(board.x + 12, 395, board.width - 24, 42), "PAUSED", messageStyle); }
+        GUI.matrix = Matrix4x4.identity;
     }
     void DrawPreview(float x, float y, int type, float size)
     {
