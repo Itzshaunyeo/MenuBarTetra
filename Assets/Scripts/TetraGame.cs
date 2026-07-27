@@ -19,6 +19,9 @@ public sealed class TetraGame : MonoBehaviour
     Vector2Int pivot;
     int currentType, heldType = -1;
     Vector2Int gravity = Vector2Int.down;
+    int stage = 1;
+    float stageTimer;
+    const float StageDuration = 300f;
     float dropTimer, dropInterval = .72f;
     int score, lines;
     bool gameOver, paused, scoreRecorded, gameStarted, holdUsed;
@@ -68,13 +71,11 @@ public sealed class TetraGame : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.Escape)) Application.Quit();
         if (Input.GetKeyDown(KeyCode.P) && !gameOver) paused = !paused;
         if (gameOver || paused) return;
+        stageTimer += Time.deltaTime;
+        if (stageTimer >= StageDuration) { stageTimer -= StageDuration; AdvanceStage(stage + 1); }
         if (Input.GetKeyDown(KeyCode.LeftArrow)) TryMove(Vector2Int.left);
         if (Input.GetKeyDown(KeyCode.RightArrow)) TryMove(Vector2Int.right);
-        if (Input.GetKeyDown(KeyCode.DownArrow)) StepDown();
-        if (Input.GetKeyDown(KeyCode.W)) SetGravity(Vector2Int.up);
-        if (Input.GetKeyDown(KeyCode.A)) SetGravity(Vector2Int.left);
-        if (Input.GetKeyDown(KeyCode.S)) SetGravity(Vector2Int.down);
-        if (Input.GetKeyDown(KeyCode.D)) SetGravity(Vector2Int.right);
+        if (Input.GetKeyDown(KeyCode.DownArrow)) StepGravity();
         if (Input.GetKeyDown(KeyCode.UpArrow)) TryRotate(1);
         if (Input.GetKeyDown(KeyCode.LeftShift) || Input.GetKeyDown(KeyCode.RightShift)) HoldPiece();
         if (Input.GetKeyDown(KeyCode.Space)) { while (StepGravity()) { } Play(dropSound); }
@@ -150,7 +151,7 @@ public sealed class TetraGame : MonoBehaviour
         ClearTransforms(falling); ClearTransforms(ghost);
         System.Array.Clear(settled, 0, settled.Length); nextPieces.Clear();
         for (int i = 0; i < 3; i++) nextPieces.Enqueue(Random.Range(0, 7));
-        score = lines = 0; gravity = Vector2Int.down; heldType = -1; holdUsed = false; scoreRecorded = false; paused = gameOver = false; dropInterval = .72f; Spawn();
+        score = lines = 0; stage = 1; stageTimer = 0; gravity = Vector2Int.down; boardCamera.transform.rotation = Quaternion.identity; heldType = -1; holdUsed = false; scoreRecorded = false; paused = gameOver = false; dropInterval = .72f; Spawn();
     }
 
     void StartGame()
@@ -225,12 +226,6 @@ public sealed class TetraGame : MonoBehaviour
         if (Valid(cells, pivot + gravity)) { pivot += gravity; RenderFalling(); UpdateGhostColor(); return true; }
         Lock(); return false;
     }
-    // Down Arrow keeps its original soft-drop behavior even after gravity is redirected.
-    void StepDown()
-    {
-        if (Valid(cells, pivot + Vector2Int.down)) { pivot += Vector2Int.down; RenderFalling(); UpdateGhostColor(); return; }
-        if (gravity == Vector2Int.down) Lock();
-    }
     void Lock()
     {
         for (int i = 0; i < cells.Length; i++) settled[pivot.x + cells[i].x, pivot.y + cells[i].y] = falling[i];
@@ -244,16 +239,37 @@ public sealed class TetraGame : MonoBehaviour
         else { int swapType = heldType; heldType = currentType; SpawnType(swapType); }
         holdUsed = true; Play(holdSound);
     }
-    void SetGravity(Vector2Int direction)
-    {
-        if (direction == gravity) return;
-        gravity = direction;
-        UpdateGhostColor(); Play(rotateSound);
-    }
     void ClearLines()
     {
         int removed = gravity == Vector2Int.down ? ClearDownRows() : gravity == Vector2Int.up ? ClearUpRows() : gravity == Vector2Int.left ? ClearLeftColumns() : ClearRightColumns();
-        if (removed > 0) { lines += removed; score += removed * removed * 100; dropInterval = Mathf.Max(.12f, .72f - lines * .015f); Play(clearSound); }
+        if (removed > 0)
+        {
+            lines += removed; score += removed * removed * 100; dropInterval = Mathf.Max(.12f, .72f - lines * .015f); Play(clearSound);
+        }
+    }
+    void AdvanceStage(int nextStage)
+    {
+        stage = nextStage;
+        bool inverted = stage % 2 == 0;
+        gravity = inverted ? Vector2Int.up : Vector2Int.down;
+        boardCamera.transform.rotation = Quaternion.Euler(0, 0, inverted ? 180 : 0);
+        SettleStack(); Play(rotateSound);
+    }
+    void SettleStack()
+    {
+        bool moved; int safety = Width * Height;
+        do
+        {
+            moved = false;
+            if (gravity == Vector2Int.down)
+            {
+                for (int y = 1; y < Height; y++) for (int x = 0; x < Width; x++) if (settled[x, y] && !settled[x, y - 1]) { settled[x, y - 1] = settled[x, y]; settled[x, y] = null; settled[x, y - 1].position += Vector3.down; moved = true; }
+            }
+            else
+            {
+                for (int y = Height - 2; y >= 0; y--) for (int x = 0; x < Width; x++) if (settled[x, y] && !settled[x, y + 1]) { settled[x, y + 1] = settled[x, y]; settled[x, y] = null; settled[x, y + 1].position += Vector3.up; moved = true; }
+            }
+        } while (moved && --safety > 0);
     }
     bool FullRow(int y) { for (int x = 0; x < Width; x++) if (!settled[x, y]) return false; return true; }
     bool FullColumn(int x) { for (int y = 0; y < Height; y++) if (!settled[x, y]) return false; return true; }
@@ -342,7 +358,8 @@ public sealed class TetraGame : MonoBehaviour
         GUI.Label(new Rect(side.x + 12, side.y + 148, side.width - 24, 18), "GRAVITY " + GravityName(), rankStyle);
         DrawRect(new Rect(side.x + 12, side.y + 170, side.width - 24, 1), new Color(.38f, .36f, .71f));
         GUI.Label(new Rect(side.x + 12, side.y + 185, side.width - 24, 20), "LINES", statStyle); GUI.Label(new Rect(side.x + 12, side.y + 200, side.width - 24, 28), lines.ToString(), valueStyle);
-        GUI.Label(new Rect(side.x + 12, side.y + 245, side.width - 24, 20), "LEVEL", statStyle); GUI.Label(new Rect(side.x + 12, side.y + 260, side.width - 24, 28), (1 + lines / 10).ToString(), valueStyle);
+        GUI.Label(new Rect(side.x + 12, side.y + 245, side.width - 24, 20), "STAGE", statStyle); GUI.Label(new Rect(side.x + 12, side.y + 260, side.width - 24, 28), stage.ToString(), valueStyle);
+        GUI.Label(new Rect(side.x + 12, side.y + 292, side.width - 24, 18), "FLIP " + FlipCountdown(), rankStyle);
         DrawRect(new Rect(side.x + 12, side.y + 308, side.width - 24, 1), new Color(.38f, .36f, .71f));
         GUI.Label(new Rect(side.x + 12, side.y + 324, side.width - 20, 20), "UP NEXT", captionStyle);
         DrawPreview(side.x + 14, side.y + 352, queued[1], 9);
@@ -351,7 +368,7 @@ public sealed class TetraGame : MonoBehaviour
         GUI.Label(new Rect(side.x + 12, side.y + 480, side.width - 20, 18), "LIVE SCORES", captionStyle);
         DrawOnlineScores(side.x + 12, side.y + 500, side.width - 24, 3);
         GUI.Label(new Rect(25, 716, 380, 20), gameOver ? "Game over. Press R to play again." : "Playing. Keyboard focus is captured.", captionStyle);
-        GUI.Label(new Rect(22, 748, 386, 42), "ARROWS move/drop/rotate   SPACE hard drop   SHIFT hold\nW/A/S/D gravity   R restart   P pause   L refresh   ESC quit", controlStyle);
+        GUI.Label(new Rect(22, 748, 386, 42), "ARROWS move/drop/rotate   SPACE hard drop   SHIFT hold\nGRID FLIPS EVERY 5 MINUTES   R restart   P pause   L refresh", controlStyle);
         if (gameOver) { DrawRect(new Rect(board.x + 12, 380, board.width - 24, 78), new Color(.05f, .04f, .17f, .92f)); GUI.Label(new Rect(board.x + 12, 388, board.width - 24, 60), "GAME OVER\nPress R to restart", messageStyle); }
         else if (paused) { DrawRect(new Rect(board.x + 12, 390, board.width - 24, 55), new Color(.05f, .04f, .17f, .92f)); GUI.Label(new Rect(board.x + 12, 395, board.width - 24, 42), "PAUSED", messageStyle); }
         GUI.matrix = Matrix4x4.identity;
@@ -415,5 +432,10 @@ public sealed class TetraGame : MonoBehaviour
         if (gravity == Vector2Int.left) return "LEFT";
         if (gravity == Vector2Int.right) return "RIGHT";
         return "DOWN";
+    }
+    string FlipCountdown()
+    {
+        int seconds = Mathf.CeilToInt(Mathf.Max(0, StageDuration - stageTimer));
+        return (seconds / 60).ToString("00") + ":" + (seconds % 60).ToString("00");
     }
 }
