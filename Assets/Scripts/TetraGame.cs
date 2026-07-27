@@ -357,7 +357,7 @@ public sealed class TetraGame : MonoBehaviour
         if (heldType >= 0) DrawPreview(side.x + 14, side.y + 113, heldType, 11);
         else GUI.Label(new Rect(side.x + 12, side.y + 120, side.width - 24, 18), "EMPTY", rankStyle);
         GUI.Label(new Rect(side.x + 12, side.y + 137, side.width - 24, 18), "FLIP " + FlipCountdown(), rankStyle);
-        GUI.Label(new Rect(side.x + 12, side.y + 159, side.width - 24, 18), "GRAVITY " + GravityName(), rankStyle);
+        GUI.Label(new Rect(side.x + 12, side.y + 157, side.width - 24, 18), "GRAVITY " + GravityName(), rankStyle);
         DrawRect(new Rect(side.x + 12, side.y + 182, side.width - 24, 1), new Color(.38f, .36f, .71f));
         GUI.Label(new Rect(side.x + 12, side.y + 197, side.width - 24, 20), "LINES", statStyle); GUI.Label(new Rect(side.x + 12, side.y + 212, side.width - 24, 28), lines.ToString(), valueStyle);
         GUI.Label(new Rect(side.x + 12, side.y + 257, side.width - 24, 20), "STAGE", statStyle); GUI.Label(new Rect(side.x + 12, side.y + 272, side.width - 24, 28), stage.ToString(), valueStyle);
@@ -369,7 +369,7 @@ public sealed class TetraGame : MonoBehaviour
         GUI.Label(new Rect(side.x + 12, side.y + 488, side.width - 20, 18), "LIVE SCORES", captionStyle);
         DrawOnlineScores(side.x + 12, side.y + 508, side.width - 24, 3);
         GUI.Label(new Rect(25, 716, 380, 20), gameOver ? "Game over. Press R to play again." : "Playing. Keyboard focus is captured.", captionStyle);
-        GUI.Label(new Rect(22, 748, 386, 42), "ARROWS move/drop   UP/X rotate right   Z rotate left   SHIFT hold\nGRID FLIPS EVERY 3 MINUTES   R restart   P pause   L refresh", controlStyle);
+        GUI.Label(new Rect(22, 748, 386, 42), "ARROWS Move | UP/X Rotate Right | Z Rotate Left | SPACE Hard Drop\nSHIFT Hold | R Restart | P Pause | L Refresh | ESC Quit", controlStyle);
         if (gameOver) { DrawRect(new Rect(board.x + 12, 380, board.width - 24, 78), new Color(.05f, .04f, .17f, .92f)); GUI.Label(new Rect(board.x + 12, 388, board.width - 24, 60), "GAME OVER\nPress R to restart", messageStyle); }
         else if (paused) { DrawRect(new Rect(board.x + 12, 390, board.width - 24, 55), new Color(.05f, .04f, .17f, .92f)); GUI.Label(new Rect(board.x + 12, 395, board.width - 24, 42), "PAUSED", messageStyle); }
         GUI.matrix = Matrix4x4.identity;
@@ -403,8 +403,8 @@ public sealed class TetraGame : MonoBehaviour
         if (GUI.Button(refreshButton, GUIContent.none, GUIStyle.none)) onlineLeaderboard.Refresh();
         GUI.Label(refreshButton, onlineLeaderboard.IsRefreshing ? "REFRESHING..." : "REFRESH LEADERBOARD", new GUIStyle(captionStyle) { alignment = TextAnchor.MiddleCenter });
 
-        GUI.Label(new Rect(45, 684, 340, 24), "ARROWS move  |  Z / X rotate  |  SPACE drop", new GUIStyle(controlStyle) { fontSize = 12 });
-        GUI.Label(new Rect(45, 714, 340, 24), "R restart  |  P pause  |  L refresh", controlStyle);
+        GUI.Label(new Rect(35, 684, 360, 24), "ARROWS Move | UP/X Rotate Right | Z Rotate Left", new GUIStyle(controlStyle) { fontSize = 11 });
+        GUI.Label(new Rect(30, 714, 370, 24), "SPACE Hard Drop | SHIFT Hold | R Restart | P Pause | L Refresh", new GUIStyle(controlStyle) { fontSize = 10 });
         GUI.Label(new Rect(45, 766, 340, 20), "TETRA", new GUIStyle(captionStyle) { alignment = TextAnchor.MiddleCenter });
     }
     void DrawPreview(float x, float y, int type, float size)
