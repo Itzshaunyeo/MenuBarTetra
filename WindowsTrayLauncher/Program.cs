@@ -25,7 +25,7 @@ namespace MenuBarTetraTray
                 menu.Items.Add(start);
                 menu.Items.Add(new ToolStripSeparator());
                 menu.Items.Add("Exit", null, (s, e) => Application.Exit());
-                icon.Text = "MenuBar Tetra — click to play";
+                icon.Text = "Tetra — click to play";
                 icon.Icon = SystemIcons.Application;
                 icon.ContextMenuStrip = menu;
                 icon.DoubleClick += (s, e) => StartGame();
@@ -40,7 +40,7 @@ namespace MenuBarTetraTray
             var player = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "MenuBarTetra.exe");
             if (!File.Exists(player))
             {
-                MessageBox.Show("Build the Unity player as MenuBarTetra.exe and place it next to this launcher.", "MenuBar Tetra", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show("Build the Unity player as MenuBarTetra.exe and place it next to this launcher.", "Tetra", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
             Process.Start(new ProcessStartInfo(player) { WorkingDirectory = Path.GetDirectoryName(player) });

@@ -19,10 +19,10 @@ public sealed class TetraGame : MonoBehaviour
     Vector2Int pivot;
     float dropTimer, dropInterval = .72f;
     int score, lines;
-    bool gameOver, paused, scoreRecorded;
+    bool gameOver, paused, scoreRecorded, gameStarted;
     Texture2D pixel;
     Shader gameplayShader;
-    GUIStyle titleStyle, captionStyle, statStyle, valueStyle, controlStyle, messageStyle, rankStyle;
+    GUIStyle titleStyle, captionStyle, statStyle, valueStyle, controlStyle, messageStyle, rankStyle, menuTitleStyle, startStyle;
     Camera boardCamera;
     float uiScale;
     Vector2 uiOrigin;
@@ -35,7 +35,7 @@ public sealed class TetraGame : MonoBehaviour
         gameplayShader = Resources.Load<Shader>("MenuBarTetraUnlit");
         if (!gameplayShader) { Debug.LogError("MenuBarTetraUnlit shader is missing."); enabled = false; return; }
         CreateWorld();
-        Restart();
+        boardCamera.enabled = false;
     }
 
     void OnDestroy() { if (pixel) Destroy(pixel); }
@@ -43,6 +43,12 @@ public sealed class TetraGame : MonoBehaviour
     void Update()
     {
         UpdateLayout();
+        if (!gameStarted)
+        {
+            if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter) || Input.GetKeyDown(KeyCode.Space)) StartGame();
+            if (Input.GetKeyDown(KeyCode.Escape)) Application.Quit();
+            return;
+        }
         if (Input.GetKeyDown(KeyCode.R)) { Restart(); return; }
         if (Input.GetKeyDown(KeyCode.Escape)) Application.Quit();
         if (Input.GetKeyDown(KeyCode.P) && !gameOver) paused = !paused;
@@ -105,6 +111,13 @@ public sealed class TetraGame : MonoBehaviour
         System.Array.Clear(settled, 0, settled.Length); nextPieces.Clear();
         for (int i = 0; i < 3; i++) nextPieces.Enqueue(Random.Range(0, 7));
         score = lines = 0; scoreRecorded = false; paused = gameOver = false; dropInterval = .72f; Spawn();
+    }
+
+    void StartGame()
+    {
+        gameStarted = true;
+        boardCamera.enabled = true;
+        Restart();
     }
 
     void ClearTransforms(List<Transform> pieces) { foreach (var t in pieces) if (t) Destroy(t.gameObject); pieces.Clear(); }
@@ -217,6 +230,8 @@ public sealed class TetraGame : MonoBehaviour
         controlStyle = new GUIStyle(statStyle) { fontSize = 11, alignment = TextAnchor.MiddleCenter, normal = { textColor = new Color(.65f, .69f, .9f) } };
         messageStyle = new GUIStyle(titleStyle) { fontSize = 23, alignment = TextAnchor.MiddleCenter, normal = { textColor = new Color(1f, .84f, .32f) } };
         rankStyle = new GUIStyle(statStyle) { fontSize = 11, alignment = TextAnchor.MiddleLeft, normal = { textColor = new Color(.8f, .82f, 1f) } };
+        menuTitleStyle = new GUIStyle(titleStyle) { fontSize = 48, alignment = TextAnchor.MiddleCenter, normal = { textColor = Color.white } };
+        startStyle = new GUIStyle(titleStyle) { fontSize = 20, alignment = TextAnchor.MiddleCenter, normal = { textColor = Color.white } };
     }
     void DrawRect(Rect rect, Color color) { GUI.color = color; GUI.DrawTexture(rect, pixel); GUI.color = Color.white; }
     void DrawBorder(Rect rect, Color color, float thickness) { DrawRect(new Rect(rect.x, rect.y, rect.width, thickness), color); DrawRect(new Rect(rect.x, rect.yMax - thickness, rect.width, thickness), color); DrawRect(new Rect(rect.x, rect.y, thickness, rect.height), color); DrawRect(new Rect(rect.xMax - thickness, rect.y, thickness, rect.height), color); }
@@ -226,11 +241,12 @@ public sealed class TetraGame : MonoBehaviour
         UpdateLayout();
         SetStyles();
         GUI.matrix = Matrix4x4.TRS(uiOrigin, Quaternion.identity, new Vector3(uiScale, uiScale, 1));
+        if (!gameStarted) { DrawMainMenu(); GUI.matrix = Matrix4x4.identity; return; }
         var board = BoardRect;
         var side = new Rect(286, 130, 128, 570);
         DrawRect(new Rect(16, 15, 398, 100), new Color(.12f, .10f, .32f));
         DrawBorder(new Rect(16, 15, 398, 790), new Color(.35f, .34f, .73f), 2);
-        GUI.Label(new Rect(31, 28, 230, 35), "MENU BAR TETRA", titleStyle);
+        GUI.Label(new Rect(31, 28, 230, 35), "TETRA", titleStyle);
         GUI.Label(new Rect(33, 62, 250, 20), paused ? "PAUSED - Press P to continue" : "Ready in the menu bar", captionStyle);
         GUI.Label(new Rect(300, 28, 82, 35), score.ToString("000000"), valueStyle);
         DrawRect(board, new Color(.025f, .04f, .12f, .18f)); DrawBorder(board, new Color(.45f, .43f, .86f), 3);
@@ -259,6 +275,32 @@ public sealed class TetraGame : MonoBehaviour
         if (gameOver) { DrawRect(new Rect(board.x + 12, 380, board.width - 24, 78), new Color(.05f, .04f, .17f, .92f)); GUI.Label(new Rect(board.x + 12, 388, board.width - 24, 60), "GAME OVER\nPress R to restart", messageStyle); }
         else if (paused) { DrawRect(new Rect(board.x + 12, 390, board.width - 24, 55), new Color(.05f, .04f, .17f, .92f)); GUI.Label(new Rect(board.x + 12, 395, board.width - 24, 42), "PAUSED", messageStyle); }
         GUI.matrix = Matrix4x4.identity;
+    }
+
+    void DrawMainMenu()
+    {
+        DrawRect(new Rect(16, 15, 398, 790), new Color(.08f, .065f, .24f));
+        DrawBorder(new Rect(16, 15, 398, 790), new Color(.42f, .40f, .86f), 2);
+        DrawRect(new Rect(32, 38, 366, 180), new Color(.12f, .10f, .34f));
+        DrawBorder(new Rect(32, 38, 366, 180), new Color(.33f, .32f, .72f), 2);
+        GUI.Label(new Rect(42, 63, 346, 62), "TETRA", menuTitleStyle);
+        GUI.Label(new Rect(42, 124, 346, 22), "A keyboard-first menu bar puzzle", new GUIStyle(captionStyle) { alignment = TextAnchor.MiddleCenter });
+        GUI.Label(new Rect(42, 161, 346, 22), "Build the stack. Clear the lines.", new GUIStyle(statStyle) { alignment = TextAnchor.MiddleCenter });
+
+        var startButton = new Rect(68, 276, 294, 66);
+        DrawRect(startButton, new Color(.35f, .27f, .86f)); DrawBorder(startButton, new Color(.72f, .67f, 1f), 2);
+        if (GUI.Button(startButton, GUIContent.none, GUIStyle.none)) StartGame();
+        GUI.Label(startButton, "START GAME", startStyle);
+        GUI.Label(new Rect(68, 352, 294, 22), "Click to start or press ENTER / SPACE", new GUIStyle(captionStyle) { alignment = TextAnchor.MiddleCenter });
+
+        DrawRect(new Rect(55, 424, 320, 1), new Color(.37f, .35f, .72f));
+        GUI.Label(new Rect(55, 448, 320, 22), "YOUR BEST", new GUIStyle(captionStyle) { alignment = TextAnchor.MiddleCenter });
+        int highScore = Leaderboard()[0];
+        GUI.Label(new Rect(55, 474, 320, 38), highScore > 0 ? highScore.ToString("000000") : "NO SCORE YET", new GUIStyle(valueStyle) { fontSize = 28, alignment = TextAnchor.MiddleCenter });
+
+        GUI.Label(new Rect(45, 684, 340, 24), "ARROWS move  |  Z / X rotate  |  SPACE drop", new GUIStyle(controlStyle) { fontSize = 12 });
+        GUI.Label(new Rect(45, 714, 340, 24), "R restart  |  P pause  |  ESC quit", controlStyle);
+        GUI.Label(new Rect(45, 766, 340, 20), "TETRA", new GUIStyle(captionStyle) { alignment = TextAnchor.MiddleCenter });
     }
     void DrawPreview(float x, float y, int type, float size)
     {
