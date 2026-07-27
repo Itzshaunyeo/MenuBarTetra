@@ -22,7 +22,10 @@ public sealed class TetraGame : MonoBehaviour
     int stage = 1;
     float stageTimer;
     const float StageDuration = 180f;
+    const float KeyRepeatDelay = .18f, KeyRepeatInterval = .065f;
     float dropTimer, dropInterval = .72f;
+    float horizontalKeyTimer, downKeyTimer, rotateKeyTimer;
+    KeyCode activeHorizontalKey = KeyCode.None;
     int score, lines;
     bool gameOver, paused, scoreRecorded, gameStarted, holdUsed;
     string playerName;
@@ -80,15 +83,76 @@ public sealed class TetraGame : MonoBehaviour
         if (gameOver || paused) return;
         stageTimer += Time.deltaTime;
         if (stageTimer >= StageDuration) { stageTimer -= StageDuration; AdvanceStage(stage + 1); }
-        if (Input.GetKeyDown(KeyCode.LeftArrow)) TryMove(Vector2Int.left);
-        if (Input.GetKeyDown(KeyCode.RightArrow)) TryMove(Vector2Int.right);
-        if (Input.GetKeyDown(KeyCode.DownArrow)) StepGravity();
-        if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.X)) TryRotate(1);
+        HandleHeldArrowKeys();
+        if (Input.GetKeyDown(KeyCode.X)) TryRotate(1);
         if (Input.GetKeyDown(KeyCode.Z)) TryRotate(-1);
         if (Input.GetKeyDown(KeyCode.LeftShift) || Input.GetKeyDown(KeyCode.RightShift)) HoldPiece();
         if (Input.GetKeyDown(KeyCode.Space)) { while (StepGravity()) { } Play(dropSound); }
         dropTimer += Time.deltaTime;
         if (dropTimer >= dropInterval) { dropTimer = 0; StepGravity(); }
+    }
+
+    // Arrow keys act immediately, then repeat after a brief delay like a desktop Tetris game.
+    void HandleHeldArrowKeys()
+    {
+        KeyCode horizontalKey = Input.GetKey(KeyCode.LeftArrow) ? KeyCode.LeftArrow : Input.GetKey(KeyCode.RightArrow) ? KeyCode.RightArrow : KeyCode.None;
+        if (horizontalKey != activeHorizontalKey)
+        {
+            activeHorizontalKey = horizontalKey;
+            horizontalKeyTimer = 0;
+            if (horizontalKey == KeyCode.LeftArrow) TryMove(Vector2Int.left);
+            else if (horizontalKey == KeyCode.RightArrow) TryMove(Vector2Int.right);
+        }
+        else if (horizontalKey != KeyCode.None)
+        {
+            horizontalKeyTimer += Time.deltaTime;
+            if (horizontalKeyTimer >= KeyRepeatDelay)
+            {
+                RepeatHorizontalMove(horizontalKey);
+            }
+        }
+
+        if (Input.GetKeyDown(KeyCode.DownArrow))
+        {
+            downKeyTimer = 0;
+            StepGravity();
+        }
+        else if (Input.GetKey(KeyCode.DownArrow))
+        {
+            downKeyTimer += Time.deltaTime;
+            if (downKeyTimer >= KeyRepeatDelay)
+            {
+                StepGravity();
+                downKeyTimer -= KeyRepeatInterval;
+                if (downKeyTimer < 0) downKeyTimer = 0;
+            }
+        }
+        else downKeyTimer = 0;
+
+        if (Input.GetKeyDown(KeyCode.UpArrow))
+        {
+            rotateKeyTimer = 0;
+            TryRotate(1);
+        }
+        else if (Input.GetKey(KeyCode.UpArrow))
+        {
+            rotateKeyTimer += Time.deltaTime;
+            if (rotateKeyTimer >= KeyRepeatDelay)
+            {
+                TryRotate(1);
+                rotateKeyTimer -= KeyRepeatInterval;
+                if (rotateKeyTimer < 0) rotateKeyTimer = 0;
+            }
+        }
+        else rotateKeyTimer = 0;
+    }
+
+    void RepeatHorizontalMove(KeyCode key)
+    {
+        if (key == KeyCode.LeftArrow) TryMove(Vector2Int.left);
+        else if (key == KeyCode.RightArrow) TryMove(Vector2Int.right);
+        horizontalKeyTimer -= KeyRepeatInterval;
+        if (horizontalKeyTimer < 0) horizontalKeyTimer = 0;
     }
 
     void CreateWorld()
@@ -110,11 +174,11 @@ public sealed class TetraGame : MonoBehaviour
 
     void CreateAudio()
     {
-        audioSource = gameObject.AddComponent<AudioSource>(); audioSource.playOnAwake = false; audioSource.volume = .28f;
+        audioSource = gameObject.AddComponent<AudioSource>(); audioSource.playOnAwake = false; audioSource.volume = .52f;
         moveSound = MakeTone("Move", 330, .045f); rotateSound = MakeTone("Rotate", 520, .07f);
         dropSound = MakeTone("Drop", 125, .11f); holdSound = MakeTone("Hold", 700, .10f);
         clearSound = MakeTone("Clear", 880, .18f); gameOverSound = MakeTone("GameOver", 150, .35f);
-        musicSource = gameObject.AddComponent<AudioSource>(); musicSource.playOnAwake = false; musicSource.loop = true; musicSource.volume = .14f;
+        musicSource = gameObject.AddComponent<AudioSource>(); musicSource.playOnAwake = false; musicSource.loop = true; musicSource.volume = .07f;
         musicClip = MakeRetroLoop(); musicSource.clip = musicClip; musicSource.Play();
     }
 
@@ -179,7 +243,7 @@ public sealed class TetraGame : MonoBehaviour
         ClearTransforms(falling); ClearTransforms(ghost);
         System.Array.Clear(settled, 0, settled.Length); nextPieces.Clear();
         for (int i = 0; i < 3; i++) nextPieces.Enqueue(Random.Range(0, 7));
-        score = lines = 0; stage = 1; stageTimer = 0; gravity = Vector2Int.down; boardCamera.transform.rotation = Quaternion.identity; heldType = -1; holdUsed = false; scoreRecorded = false; paused = gameOver = false; dropInterval = .72f; Spawn();
+        score = lines = 0; stage = 1; stageTimer = 0; gravity = Vector2Int.down; boardCamera.transform.rotation = Quaternion.identity; heldType = -1; holdUsed = false; scoreRecorded = false; paused = gameOver = false; dropInterval = .72f; horizontalKeyTimer = downKeyTimer = rotateKeyTimer = 0; activeHorizontalKey = KeyCode.None; Spawn();
     }
 
     void StartGame()
