@@ -22,9 +22,9 @@ public sealed class TetraGame : MonoBehaviour
     bool gameOver, paused, scoreRecorded, gameStarted;
     string playerName;
     float leaderboardRefreshTimer;
-    Texture2D pixel;
+    Texture2D pixel, playerNameBackground;
     Shader gameplayShader;
-    GUIStyle titleStyle, captionStyle, statStyle, valueStyle, controlStyle, messageStyle, rankStyle, menuTitleStyle, startStyle;
+    GUIStyle titleStyle, captionStyle, statStyle, valueStyle, controlStyle, messageStyle, rankStyle, menuTitleStyle, startStyle, playerNameStyle;
     Camera boardCamera;
     OnlineLeaderboardClient onlineLeaderboard;
     float uiScale;
@@ -34,6 +34,7 @@ public sealed class TetraGame : MonoBehaviour
     {
         Application.targetFrameRate = 60;
         pixel = new Texture2D(1, 1); pixel.SetPixel(0, 0, Color.white); pixel.Apply();
+        playerNameBackground = new Texture2D(1, 1); playerNameBackground.SetPixel(0, 0, new Color(.39f, .30f, .62f)); playerNameBackground.Apply();
         // A Resources shader is guaranteed to ship in a player build; Unity's default runtime cube material is not.
         gameplayShader = Resources.Load<Shader>("MenuBarTetraUnlit");
         if (!gameplayShader) { Debug.LogError("MenuBarTetraUnlit shader is missing."); enabled = false; return; }
@@ -44,7 +45,7 @@ public sealed class TetraGame : MonoBehaviour
         boardCamera.enabled = false;
     }
 
-    void OnDestroy() { if (pixel) Destroy(pixel); }
+    void OnDestroy() { if (pixel) Destroy(pixel); if (playerNameBackground) Destroy(playerNameBackground); }
 
     void Update()
     {
@@ -229,6 +230,15 @@ public sealed class TetraGame : MonoBehaviour
         rankStyle = new GUIStyle(statStyle) { fontSize = 11, alignment = TextAnchor.MiddleLeft, normal = { textColor = new Color(.8f, .82f, 1f) } };
         menuTitleStyle = new GUIStyle(titleStyle) { fontSize = 48, alignment = TextAnchor.MiddleCenter, normal = { textColor = Color.white } };
         startStyle = new GUIStyle(titleStyle) { fontSize = 20, alignment = TextAnchor.MiddleCenter, normal = { textColor = Color.white } };
+        playerNameStyle = new GUIStyle(GUI.skin.textField)
+        {
+            fontSize = 15,
+            alignment = TextAnchor.MiddleCenter,
+            padding = new RectOffset(10, 10, 5, 5),
+            normal = { background = playerNameBackground, textColor = Color.white },
+            focused = { background = playerNameBackground, textColor = Color.white },
+            hover = { background = playerNameBackground, textColor = Color.white }
+        };
     }
     void DrawRect(Rect rect, Color color) { GUI.color = color; GUI.DrawTexture(rect, pixel); GUI.color = Color.white; }
     void DrawBorder(Rect rect, Color color, float thickness) { DrawRect(new Rect(rect.x, rect.y, rect.width, thickness), color); DrawRect(new Rect(rect.x, rect.yMax - thickness, rect.width, thickness), color); DrawRect(new Rect(rect.x, rect.y, thickness, rect.height), color); DrawRect(new Rect(rect.xMax - thickness, rect.y, thickness, rect.height), color); }
@@ -271,7 +281,7 @@ public sealed class TetraGame : MonoBehaviour
 
     void DrawMainMenu()
     {
-        DrawRect(new Rect(16, 15, 398, 790), new Color(.08f, .065f, .24f));
+        DrawRect(new Rect(16, 15, 398, 790), new Color(.13f, .095f, .30f));
         DrawBorder(new Rect(16, 15, 398, 790), new Color(.42f, .40f, .86f), 2);
         DrawRect(new Rect(32, 38, 366, 180), new Color(.12f, .10f, .34f));
         DrawBorder(new Rect(32, 38, 366, 180), new Color(.33f, .32f, .72f), 2);
@@ -287,7 +297,9 @@ public sealed class TetraGame : MonoBehaviour
 
         DrawRect(new Rect(55, 424, 320, 1), new Color(.37f, .35f, .72f));
         GUI.Label(new Rect(55, 424, 320, 22), "PLAYER NAME", new GUIStyle(captionStyle) { alignment = TextAnchor.MiddleCenter });
-        playerName = GUI.TextField(new Rect(103, 449, 224, 30), playerName, 16);
+        var nameField = new Rect(91, 446, 248, 38);
+        DrawBorder(nameField, new Color(.73f, .65f, .98f), 2);
+        playerName = GUI.TextField(new Rect(94, 449, 242, 32), playerName, 16, playerNameStyle);
         GUI.Label(new Rect(55, 496, 320, 22), "GLOBAL LEADERBOARD", new GUIStyle(captionStyle) { alignment = TextAnchor.MiddleCenter });
         DrawOnlineScores(55, 524, 320, 3, TextAnchor.MiddleCenter);
         var refreshButton = new Rect(125, 598, 180, 30);
