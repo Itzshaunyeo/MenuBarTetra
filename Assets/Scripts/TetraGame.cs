@@ -28,7 +28,7 @@ public sealed class TetraGame : MonoBehaviour
     float dropTimer, dropInterval = .72f;
     int score, lines;
     bool gameOver, paused, scoreRecorded, gameStarted;
-    Texture2D pixel, roundMask;
+    Texture2D pixel;
     Shader gameplayShader;
     GUIStyle titleStyle, captionStyle, statStyle, valueStyle, controlStyle, messageStyle, rankStyle, menuTitleStyle, startStyle, shellStyle, shellValueStyle;
     Camera boardCamera;
@@ -39,7 +39,6 @@ public sealed class TetraGame : MonoBehaviour
     {
         Application.targetFrameRate = 60;
         pixel = new Texture2D(1, 1); pixel.SetPixel(0, 0, Color.white); pixel.Apply();
-        roundMask = CreateRoundMask(64);
         // A Resources shader is guaranteed to ship in a player build; Unity's default runtime cube material is not.
         gameplayShader = Resources.Load<Shader>("MenuBarTetraUnlit");
         if (!gameplayShader) { Debug.LogError("MenuBarTetraUnlit shader is missing."); enabled = false; return; }
@@ -47,7 +46,7 @@ public sealed class TetraGame : MonoBehaviour
         boardCamera.enabled = false;
     }
 
-    void OnDestroy() { if (pixel) Destroy(pixel); if (roundMask) Destroy(roundMask); }
+    void OnDestroy() { if (pixel) Destroy(pixel); }
 
     void Update()
     {
@@ -244,49 +243,8 @@ public sealed class TetraGame : MonoBehaviour
         shellStyle = new GUIStyle(statStyle) { fontSize = 12, normal = { textColor = PanelDeep } };
         shellValueStyle = new GUIStyle(valueStyle) { normal = { textColor = PanelDeep } };
     }
-    static Texture2D CreateRoundMask(int size)
-    {
-        var texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
-        float center = (size - 1) * .5f, radius = size * .5f - 1f;
-        for (int y = 0; y < size; y++) for (int x = 0; x < size; x++)
-        {
-            float distance = Vector2.Distance(new Vector2(x, y), new Vector2(center, center));
-            texture.SetPixel(x, y, new Color(1, 1, 1, Mathf.Clamp01(radius + 1f - distance)));
-        }
-        texture.Apply(); return texture;
-    }
     void DrawRect(Rect rect, Color color) { GUI.color = color; GUI.DrawTexture(rect, pixel); GUI.color = Color.white; }
-    // Preview cells stay square, matching the playfield blocks.
-    void DrawBorder(Rect rect, Color color, float thickness)
-    {
-        DrawRect(new Rect(rect.x, rect.y, rect.width, thickness), color);
-        DrawRect(new Rect(rect.x, rect.yMax - thickness, rect.width, thickness), color);
-        DrawRect(new Rect(rect.x, rect.y, thickness, rect.height), color);
-        DrawRect(new Rect(rect.xMax - thickness, rect.y, thickness, rect.height), color);
-    }
-    void DrawRoundedRect(Rect rect, Color color, float radius)
-    {
-        radius = Mathf.Min(radius, rect.width * .5f, rect.height * .5f);
-        DrawRect(new Rect(rect.x + radius, rect.y, rect.width - radius * 2, rect.height), color);
-        DrawRect(new Rect(rect.x, rect.y + radius, rect.width, rect.height - radius * 2), color);
-        GUI.color = color;
-        GUI.DrawTexture(new Rect(rect.x, rect.y, radius * 2, radius * 2), roundMask);
-        GUI.DrawTexture(new Rect(rect.xMax - radius * 2, rect.y, radius * 2, radius * 2), roundMask);
-        GUI.DrawTexture(new Rect(rect.x, rect.yMax - radius * 2, radius * 2, radius * 2), roundMask);
-        GUI.DrawTexture(new Rect(rect.xMax - radius * 2, rect.yMax - radius * 2, radius * 2, radius * 2), roundMask);
-        GUI.color = Color.white;
-    }
-    void DrawRoundedPanel(Rect rect, Color fill, Color border, float radius, float thickness = 2)
-    {
-        DrawRoundedRect(rect, border, radius);
-        DrawRoundedRect(new Rect(rect.x + thickness, rect.y + thickness, rect.width - thickness * 2, rect.height - thickness * 2), fill, Mathf.Max(0, radius - thickness));
-    }
-    void DrawRoundedOutline(Rect rect, Color color, float radius, float thickness = 2)
-    {
-        DrawRoundedRect(rect, color, radius);
-        // Alpha-zero draw leaves the camera/image beneath this UI frame intact.
-        DrawRoundedRect(new Rect(rect.x + thickness, rect.y + thickness, rect.width - thickness * 2, rect.height - thickness * 2), new Color(0, 0, 0, 0), Mathf.Max(0, radius - thickness));
-    }
+    void DrawBorder(Rect rect, Color color, float thickness) { DrawRect(new Rect(rect.x, rect.y, rect.width, thickness), color); DrawRect(new Rect(rect.x, rect.yMax - thickness, rect.width, thickness), color); DrawRect(new Rect(rect.x, rect.y, thickness, rect.height), color); DrawRect(new Rect(rect.xMax - thickness, rect.y, thickness, rect.height), color); }
 
     void OnGUI()
     {
@@ -296,14 +254,13 @@ public sealed class TetraGame : MonoBehaviour
         if (!gameStarted) { DrawMainMenu(); GUI.matrix = Matrix4x4.identity; return; }
         var board = BoardRect;
         var side = new Rect(286, 130, 128, 570);
-        DrawRoundedOutline(new Rect(16, 15, 398, 790), Border, 20);
-        DrawRoundedPanel(new Rect(16, 15, 398, 100), PanelDeep, Border, 18);
+        DrawRect(new Rect(16, 15, 398, 100), PanelDeep);
+        DrawBorder(new Rect(16, 15, 398, 790), Border, 2);
         GUI.Label(new Rect(31, 28, 230, 35), "TETRA", titleStyle);
         GUI.Label(new Rect(33, 62, 250, 20), paused ? "PAUSED - Press P to continue" : "Ready in the menu bar", captionStyle);
         GUI.Label(new Rect(300, 28, 82, 35), score.ToString("000000"), valueStyle);
-        DrawRoundedOutline(board, Border, 13, 3);
-        DrawRoundedRect(new Rect(board.x + 3, board.y + 3, board.width - 6, board.height - 6), new Color(.11f, .12f, .25f, .16f), 10);
-        DrawRoundedPanel(side, Panel, Border, 13);
+        DrawRect(board, new Color(.11f, .12f, .25f, .16f)); DrawBorder(board, Border, 3);
+        DrawRect(side, Panel); DrawBorder(side, Border, 2);
         // The queue is initialized before the first frame, but keep the HUD safe while Unity is reloading scripts.
         int[] queued = nextPieces.Count == 3 ? nextPieces.ToArray() : new[] { 0, 0, 0 };
         GUI.Label(new Rect(side.x + 12, side.y + 15, side.width - 20, 20), "NEXT", captionStyle);
@@ -325,21 +282,23 @@ public sealed class TetraGame : MonoBehaviour
         }
         GUI.Label(new Rect(25, 716, 380, 20), gameOver ? "Game over. Press R to play again." : "Playing. Keyboard focus is captured.", shellStyle);
         GUI.Label(new Rect(22, 748, 386, 42), "ARROWS move/drop   Z / X rotate   SPACE hard drop\nR restart   P pause   ESC quit", new GUIStyle(shellStyle) { fontSize = 11, alignment = TextAnchor.MiddleCenter });
-        if (gameOver) { DrawRoundedPanel(new Rect(board.x + 12, 380, board.width - 24, 78), PanelDeep, Border, 12); GUI.Label(new Rect(board.x + 12, 388, board.width - 24, 60), "GAME OVER\nPress R to restart", messageStyle); }
-        else if (paused) { DrawRoundedPanel(new Rect(board.x + 12, 390, board.width - 24, 55), PanelDeep, Border, 12); GUI.Label(new Rect(board.x + 12, 395, board.width - 24, 42), "PAUSED", messageStyle); }
+        if (gameOver) { DrawRect(new Rect(board.x + 12, 380, board.width - 24, 78), new Color(.05f, .04f, .17f, .92f)); GUI.Label(new Rect(board.x + 12, 388, board.width - 24, 60), "GAME OVER\nPress R to restart", messageStyle); }
+        else if (paused) { DrawRect(new Rect(board.x + 12, 390, board.width - 24, 55), new Color(.05f, .04f, .17f, .92f)); GUI.Label(new Rect(board.x + 12, 395, board.width - 24, 42), "PAUSED", messageStyle); }
         GUI.matrix = Matrix4x4.identity;
     }
 
     void DrawMainMenu()
     {
-        DrawRoundedPanel(new Rect(16, 15, 398, 790), Shell, Border, 20);
-        DrawRoundedPanel(new Rect(32, 38, 366, 180), PanelDeep, Border, 18);
+        DrawRect(new Rect(16, 15, 398, 790), Shell);
+        DrawBorder(new Rect(16, 15, 398, 790), Border, 2);
+        DrawRect(new Rect(32, 38, 366, 180), PanelDeep);
+        DrawBorder(new Rect(32, 38, 366, 180), Border, 2);
         GUI.Label(new Rect(42, 63, 346, 62), "TETRA", menuTitleStyle);
         GUI.Label(new Rect(42, 124, 346, 22), "A keyboard-first menu bar puzzle", new GUIStyle(captionStyle) { alignment = TextAnchor.MiddleCenter });
         GUI.Label(new Rect(42, 161, 346, 22), "Build the stack. Clear the lines.", new GUIStyle(statStyle) { alignment = TextAnchor.MiddleCenter });
 
         var startButton = new Rect(68, 276, 294, 66);
-        DrawRoundedPanel(startButton, Accent, Color.white, 33, 2);
+        DrawRect(startButton, Accent); DrawBorder(startButton, Color.white, 2);
         if (GUI.Button(startButton, GUIContent.none, GUIStyle.none)) StartGame();
         GUI.Label(startButton, "START GAME", startStyle);
         GUI.Label(new Rect(68, 352, 294, 22), "Click to start or press ENTER / SPACE", new GUIStyle(shellStyle) { alignment = TextAnchor.MiddleCenter });
