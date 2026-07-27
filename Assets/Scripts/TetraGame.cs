@@ -20,10 +20,13 @@ public sealed class TetraGame : MonoBehaviour
     float dropTimer, dropInterval = .72f;
     int score, lines;
     bool gameOver, paused, scoreRecorded, gameStarted;
+    string playerName;
+    float leaderboardRefreshTimer;
     Texture2D pixel;
     Shader gameplayShader;
     GUIStyle titleStyle, captionStyle, statStyle, valueStyle, controlStyle, messageStyle, rankStyle, menuTitleStyle, startStyle;
     Camera boardCamera;
+    OnlineLeaderboardClient onlineLeaderboard;
     float uiScale;
     Vector2 uiOrigin;
 
@@ -35,6 +38,9 @@ public sealed class TetraGame : MonoBehaviour
         gameplayShader = Resources.Load<Shader>("MenuBarTetraUnlit");
         if (!gameplayShader) { Debug.LogError("MenuBarTetraUnlit shader is missing."); enabled = false; return; }
         CreateWorld();
+        onlineLeaderboard = gameObject.AddComponent<OnlineLeaderboardClient>();
+        playerName = PlayerPrefs.GetString("MenuBarTetra.PlayerName", "Player");
+        onlineLeaderboard.Refresh();
         boardCamera.enabled = false;
     }
 
@@ -43,6 +49,9 @@ public sealed class TetraGame : MonoBehaviour
     void Update()
     {
         UpdateLayout();
+        leaderboardRefreshTimer += Time.deltaTime;
+        if (leaderboardRefreshTimer >= 15f) { leaderboardRefreshTimer = 0; onlineLeaderboard.Refresh(); }
+        if (Input.GetKeyDown(KeyCode.L)) onlineLeaderboard.Refresh();
         if (!gameStarted)
         {
             if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter) || Input.GetKeyDown(KeyCode.Space)) StartGame();
@@ -115,6 +124,8 @@ public sealed class TetraGame : MonoBehaviour
 
     void StartGame()
     {
+        playerName = string.IsNullOrWhiteSpace(playerName) ? "Player" : playerName.Trim().Substring(0, Mathf.Min(16, playerName.Trim().Length));
+        PlayerPrefs.SetString("MenuBarTetra.PlayerName", playerName); PlayerPrefs.Save();
         gameStarted = true;
         boardCamera.enabled = true;
         Restart();
@@ -199,25 +210,11 @@ public sealed class TetraGame : MonoBehaviour
     }
     static Color Dim(Color color) { return Color.Lerp(new Color(.08f, .10f, .22f), color, .28f); }
 
-    int[] Leaderboard()
-    {
-        var scores = new int[5];
-        for (int i = 0; i < scores.Length; i++) scores[i] = PlayerPrefs.GetInt("MenuBarTetra.HighScore." + i, 0);
-        return scores;
-    }
-
     void RecordScore()
     {
         if (scoreRecorded || score <= 0) return;
-        var scores = Leaderboard();
-        for (int i = 0; i < scores.Length; i++)
-        {
-            if (score <= scores[i]) continue;
-            for (int j = scores.Length - 1; j > i; j--) scores[j] = scores[j - 1];
-            scores[i] = score; break;
-        }
-        for (int i = 0; i < scores.Length; i++) PlayerPrefs.SetInt("MenuBarTetra.HighScore." + i, scores[i]);
-        PlayerPrefs.Save(); scoreRecorded = true;
+        scoreRecorded = true;
+        onlineLeaderboard.Submit(playerName, score);
     }
 
     void SetStyles()
@@ -263,15 +260,10 @@ public sealed class TetraGame : MonoBehaviour
         DrawPreview(side.x + 14, side.y + 315, queued[1], 10);
         DrawPreview(side.x + 14, side.y + 385, queued[2], 10);
         DrawRect(new Rect(side.x + 12, side.y + 462, side.width - 24, 1), new Color(.38f, .36f, .71f));
-        GUI.Label(new Rect(side.x + 12, side.y + 476, side.width - 20, 18), "TOP SCORES", captionStyle);
-        int[] highScores = Leaderboard();
-        for (int i = 0; i < 3; i++)
-        {
-            GUI.Label(new Rect(side.x + 12, side.y + 498 + i * 19, side.width - 24, 18),
-                (i + 1) + ".  " + (highScores[i] > 0 ? highScores[i].ToString("000000") : "------"), rankStyle);
-        }
+        GUI.Label(new Rect(side.x + 12, side.y + 476, side.width - 20, 18), "LIVE SCORES", captionStyle);
+        DrawOnlineScores(side.x + 12, side.y + 498, side.width - 24, 3);
         GUI.Label(new Rect(25, 716, 380, 20), gameOver ? "Game over. Press R to play again." : "Playing. Keyboard focus is captured.", captionStyle);
-        GUI.Label(new Rect(22, 748, 386, 42), "ARROWS move/drop   Z / X rotate   SPACE hard drop\nR restart   P pause   ESC quit", controlStyle);
+        GUI.Label(new Rect(22, 748, 386, 42), "ARROWS move/drop   Z / X rotate   SPACE hard drop\nR restart   P pause   L refresh   ESC quit", controlStyle);
         if (gameOver) { DrawRect(new Rect(board.x + 12, 380, board.width - 24, 78), new Color(.05f, .04f, .17f, .92f)); GUI.Label(new Rect(board.x + 12, 388, board.width - 24, 60), "GAME OVER\nPress R to restart", messageStyle); }
         else if (paused) { DrawRect(new Rect(board.x + 12, 390, board.width - 24, 55), new Color(.05f, .04f, .17f, .92f)); GUI.Label(new Rect(board.x + 12, 395, board.width - 24, 42), "PAUSED", messageStyle); }
         GUI.matrix = Matrix4x4.identity;
@@ -294,17 +286,37 @@ public sealed class TetraGame : MonoBehaviour
         GUI.Label(new Rect(68, 352, 294, 22), "Click to start or press ENTER / SPACE", new GUIStyle(captionStyle) { alignment = TextAnchor.MiddleCenter });
 
         DrawRect(new Rect(55, 424, 320, 1), new Color(.37f, .35f, .72f));
-        GUI.Label(new Rect(55, 448, 320, 22), "YOUR BEST", new GUIStyle(captionStyle) { alignment = TextAnchor.MiddleCenter });
-        int highScore = Leaderboard()[0];
-        GUI.Label(new Rect(55, 474, 320, 38), highScore > 0 ? highScore.ToString("000000") : "NO SCORE YET", new GUIStyle(valueStyle) { fontSize = 28, alignment = TextAnchor.MiddleCenter });
+        GUI.Label(new Rect(55, 424, 320, 22), "PLAYER NAME", new GUIStyle(captionStyle) { alignment = TextAnchor.MiddleCenter });
+        playerName = GUI.TextField(new Rect(103, 449, 224, 30), playerName, 16);
+        GUI.Label(new Rect(55, 496, 320, 22), "GLOBAL LEADERBOARD", new GUIStyle(captionStyle) { alignment = TextAnchor.MiddleCenter });
+        DrawOnlineScores(55, 524, 320, 3, TextAnchor.MiddleCenter);
+        var refreshButton = new Rect(125, 598, 180, 30);
+        DrawRect(refreshButton, new Color(.28f, .23f, .67f)); DrawBorder(refreshButton, new Color(.65f, .61f, .98f), 1);
+        if (GUI.Button(refreshButton, GUIContent.none, GUIStyle.none)) onlineLeaderboard.Refresh();
+        GUI.Label(refreshButton, onlineLeaderboard.IsRefreshing ? "REFRESHING..." : "REFRESH LEADERBOARD", new GUIStyle(captionStyle) { alignment = TextAnchor.MiddleCenter });
 
         GUI.Label(new Rect(45, 684, 340, 24), "ARROWS move  |  Z / X rotate  |  SPACE drop", new GUIStyle(controlStyle) { fontSize = 12 });
-        GUI.Label(new Rect(45, 714, 340, 24), "R restart  |  P pause  |  ESC quit", controlStyle);
+        GUI.Label(new Rect(45, 714, 340, 24), "R restart  |  P pause  |  L refresh", controlStyle);
         GUI.Label(new Rect(45, 766, 340, 20), "TETRA", new GUIStyle(captionStyle) { alignment = TextAnchor.MiddleCenter });
     }
     void DrawPreview(float x, float y, int type, float size)
     {
         var shape = Shape(type); int minX = 99, minY = 99; foreach (var c in shape) { minX = Mathf.Min(minX, c.x); minY = Mathf.Min(minY, c.y); }
         foreach (var c in shape) { var r = new Rect(x + (c.x - minX) * size, y + (1 - (c.y - minY)) * size, size - 2, size - 2); DrawRect(r, colors[type]); DrawBorder(r, new Color(1, 1, 1, .35f), 1); }
+    }
+
+    void DrawOnlineScores(float x, float y, float width, int count, TextAnchor alignment = TextAnchor.MiddleLeft)
+    {
+        var entries = onlineLeaderboard != null ? onlineLeaderboard.Entries : System.Array.Empty<LeaderboardEntry>();
+        if (entries.Length == 0)
+        {
+            GUI.Label(new Rect(x, y, width, 20), onlineLeaderboard != null ? onlineLeaderboard.Status : "Connecting", new GUIStyle(rankStyle) { alignment = alignment });
+            return;
+        }
+        for (int i = 0; i < Mathf.Min(count, entries.Length); i++)
+        {
+            var entry = entries[i];
+            GUI.Label(new Rect(x, y + i * 19, width, 18), (i + 1) + ".  " + entry.name + "  " + entry.score.ToString("000000"), new GUIStyle(rankStyle) { alignment = alignment });
+        }
     }
 }

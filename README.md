@@ -26,3 +26,9 @@ The project has no packages or external assets. All geometry is generated at run
 The player requests a 430x820 borderless, always-on-top window at the top-right of the primary display. This keeps the complete 10x20 field visible while behaving like a compact menu-bar utility. Windows users may pin the built executable to the taskbar / startup; launching it starts a new round instantly.
 
 For an actual notification-area (system-tray) icon, build the player, then run `build-tray-launcher.cmd`. It places `MenuBarTetraTray.exe` alongside `Builds/Windows/MenuBarTetra.exe`. Double-clicking the tray icon starts a game instantly; right-click provides **Start game** and **Exit**.
+
+## Online leaderboard
+
+Tetra includes a shared leaderboard client and a dependency-free Node.js server in [`server/`](server). Run the server locally with `cd server` then `npm start`; the game will use `http://localhost:8787` by default. To share scores publicly, deploy that folder to a Node.js host with persistent storage, replace `endpoint` in `Assets/Resources/OnlineLeaderboardConfig.json` with its public HTTPS address, and rebuild the player.
+
+Players enter their name on the start screen. Scores submit at game over, leaderboard listings refresh automatically every 15 seconds, and **L** or the Refresh button refreshes immediately.
