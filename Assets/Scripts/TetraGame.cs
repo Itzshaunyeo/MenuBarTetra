@@ -174,7 +174,7 @@ public sealed class TetraGame : MonoBehaviour
 
     void CreateAudio()
     {
-        audioSource = gameObject.AddComponent<AudioSource>(); audioSource.playOnAwake = false; audioSource.volume = .28f;
+        audioSource = gameObject.AddComponent<AudioSource>(); audioSource.playOnAwake = false; audioSource.volume = .72f;
         moveSound = MakeTone("Move", 330, .045f); rotateSound = MakeTone("Rotate", 520, .07f);
         dropSound = MakeTone("Drop", 125, .11f); holdSound = MakeTone("Hold", 700, .10f);
         clearSound = MakeTone("Clear", 880, .18f); gameOverSound = MakeTone("GameOver", 150, .35f);
@@ -252,6 +252,7 @@ public sealed class TetraGame : MonoBehaviour
         PlayerPrefs.SetString("MenuBarTetra.PlayerName", playerName); PlayerPrefs.Save();
         gameStarted = true;
         boardCamera.enabled = true;
+        if (musicSource && musicSource.isPlaying) musicSource.Stop();
         Restart();
     }
 
