@@ -34,7 +34,7 @@ public sealed class TetraGame : MonoBehaviour
     Shader gameplayShader;
     AudioSource audioSource;
     AudioSource musicSource;
-    AudioClip moveSound, rotateSound, dropSound, holdSound, clearSound, gameOverSound;
+    AudioClip moveSound, rotateSound, dropSound, lockSound, holdSound, clearSound, gameOverSound;
     AudioClip musicClip;
     GUIStyle titleStyle, captionStyle, statStyle, valueStyle, controlStyle, messageStyle, rankStyle, menuTitleStyle, startStyle, playerNameStyle;
     Camera boardCamera;
@@ -62,7 +62,7 @@ public sealed class TetraGame : MonoBehaviour
     {
         if (pixel) Destroy(pixel); if (playerNameBackground) Destroy(playerNameBackground);
         if (moveSound) Destroy(moveSound); if (rotateSound) Destroy(rotateSound); if (dropSound) Destroy(dropSound);
-        if (holdSound) Destroy(holdSound); if (clearSound) Destroy(clearSound); if (gameOverSound) Destroy(gameOverSound); if (musicClip) Destroy(musicClip);
+        if (lockSound) Destroy(lockSound); if (holdSound) Destroy(holdSound); if (clearSound) Destroy(clearSound); if (gameOverSound) Destroy(gameOverSound); if (musicClip) Destroy(musicClip);
     }
 
     void Update()
@@ -175,21 +175,33 @@ public sealed class TetraGame : MonoBehaviour
     void CreateAudio()
     {
         audioSource = gameObject.AddComponent<AudioSource>(); audioSource.playOnAwake = false; audioSource.volume = .72f;
-        moveSound = MakeTone("Move", 330, .045f); rotateSound = MakeTone("Rotate", 520, .07f);
-        dropSound = MakeTone("Drop", 125, .11f); holdSound = MakeTone("Hold", 700, .10f);
-        clearSound = MakeTone("Clear", 880, .18f); gameOverSound = MakeTone("GameOver", 150, .35f);
+        moveSound = MakeArcadeEffect("Move", 420, 350, .045f, .18f);
+        rotateSound = MakeArcadeEffect("Rotate", 460, 780, .07f, .20f);
+        dropSound = MakeArcadeEffect("HardDrop", 260, 115, .10f, .28f);
+        lockSound = MakeArcadeEffect("Lock", 185, 105, .075f, .34f);
+        holdSound = MakeArcadeEffect("Hold", 620, 880, .10f, .19f);
+        clearSound = MakeArcadeEffect("LineClear", 700, 1240, .19f, .30f);
+        gameOverSound = MakeArcadeEffect("GameOver", 260, 75, .38f, .26f);
         musicSource = gameObject.AddComponent<AudioSource>(); musicSource.playOnAwake = false; musicSource.loop = true; musicSource.volume = .14f;
         musicClip = MakeRetroLoop(); musicSource.clip = musicClip; musicSource.Play();
     }
 
-    AudioClip MakeTone(string clipName, float frequency, float seconds)
+    // Original square-wave effects evoke an arcade cabinet without reusing any game's recorded audio.
+    AudioClip MakeArcadeEffect(string clipName, float startFrequency, float endFrequency, float seconds, float level)
     {
         int sampleRate = 44100, samples = Mathf.CeilToInt(sampleRate * seconds);
         var data = new float[samples];
+        float phase = 0;
         for (int i = 0; i < samples; i++)
         {
             float t = i / (float)sampleRate;
-            data[i] = Mathf.Sin(2f * Mathf.PI * frequency * t) * Mathf.Exp(-5f * t / seconds) * .45f;
+            float progress = t / seconds;
+            float frequency = Mathf.Lerp(startFrequency, endFrequency, progress);
+            phase += frequency / sampleRate;
+            float square = Mathf.Repeat(phase, 1f) < .5f ? 1f : -1f;
+            float sine = Mathf.Sin(phase * 2f * Mathf.PI);
+            float envelope = Mathf.Min(1f, t / .004f) * Mathf.Clamp01((seconds - t) / .022f);
+            data[i] = (square * .78f + sine * .22f) * envelope * level;
         }
         var clip = AudioClip.Create(clipName, samples, 1, sampleRate, false); clip.SetData(data, 0); return clip;
     }
@@ -327,7 +339,7 @@ public sealed class TetraGame : MonoBehaviour
     void Lock()
     {
         for (int i = 0; i < cells.Length; i++) settled[pivot.x + cells[i].x, pivot.y + cells[i].y] = falling[i];
-        falling.Clear(); ClearTransforms(ghost); ClearLines(); holdUsed = false; Spawn();
+        falling.Clear(); ClearTransforms(ghost); Play(lockSound); ClearLines(); holdUsed = false; Spawn();
     }
     void HoldPiece()
     {
