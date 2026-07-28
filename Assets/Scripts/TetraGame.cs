@@ -174,11 +174,11 @@ public sealed class TetraGame : MonoBehaviour
 
     void CreateAudio()
     {
-        audioSource = gameObject.AddComponent<AudioSource>(); audioSource.playOnAwake = false; audioSource.volume = .52f;
+        audioSource = gameObject.AddComponent<AudioSource>(); audioSource.playOnAwake = false; audioSource.volume = .28f;
         moveSound = MakeTone("Move", 330, .045f); rotateSound = MakeTone("Rotate", 520, .07f);
         dropSound = MakeTone("Drop", 125, .11f); holdSound = MakeTone("Hold", 700, .10f);
         clearSound = MakeTone("Clear", 880, .18f); gameOverSound = MakeTone("GameOver", 150, .35f);
-        musicSource = gameObject.AddComponent<AudioSource>(); musicSource.playOnAwake = false; musicSource.loop = true; musicSource.volume = .07f;
+        musicSource = gameObject.AddComponent<AudioSource>(); musicSource.playOnAwake = false; musicSource.loop = true; musicSource.volume = .14f;
         musicClip = MakeRetroLoop(); musicSource.clip = musicClip; musicSource.Play();
     }
 
@@ -266,8 +266,13 @@ public sealed class TetraGame : MonoBehaviour
     {
         currentType = type;
         cells = Shape(type); pivot = SpawnPivot();
+        // Check before creating visual cubes. A blocked spawn is game over, not an untracked falling piece.
+        if (!Valid(cells, pivot))
+        {
+            ClearTransforms(falling); ClearTransforms(ghost);
+            gameOver = true; RecordScore(); Play(gameOverSound); return;
+        }
         foreach (var ignored in cells) falling.Add(CreateBlock(colors[type], "Falling Tetromino", .91f));
-        if (!Valid(cells, pivot)) { gameOver = true; RecordScore(); Play(gameOverSound); return; }
         RenderFalling(); UpdateGhost(type);
     }
     Vector2Int SpawnPivot()
@@ -346,7 +351,10 @@ public sealed class TetraGame : MonoBehaviour
         gravity = inverted ? Vector2Int.up : Vector2Int.down;
         boardCamera.transform.rotation = Quaternion.identity;
         FlipSettledStack(inverted);
-        SettleStack(); Play(rotateSound);
+        SettleStack();
+        // The landing location changes when the stack flips, so never leave the old ghost behind.
+        UpdateGhostColor();
+        Play(rotateSound);
     }
     // Rotate the established stack around the board's horizontal center so it changes stage with the playfield.
     void FlipSettledStack(bool inverted)
