@@ -30,7 +30,8 @@ public sealed class TetraGame : MonoBehaviour
     float dropTimer, dropInterval = .72f;
     float horizontalKeyTimer, downKeyTimer, rotateKeyTimer;
     KeyCode activeHorizontalKey = KeyCode.None;
-    int score, lines;
+    readonly RunStats runStats = new RunStats();
+    readonly GameOverSummaryUI gameOverSummary = new GameOverSummaryUI();
     bool gameOver, paused, scoreRecorded, gameStarted, holdUsed;
     string playerName;
     float leaderboardRefreshTimer;
@@ -85,6 +86,7 @@ public sealed class TetraGame : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.Escape)) Application.Quit();
         if (Input.GetKeyDown(KeyCode.P) && !gameOver) paused = !paused;
         if (gameOver || paused) return;
+        runStats.AddPlayTime(Time.deltaTime);
         UpdateGravityShiftTimer();
         HandleHeldArrowKeys();
         if (Input.GetKeyDown(KeyCode.X)) TryRotate(1);
@@ -292,7 +294,7 @@ public sealed class TetraGame : MonoBehaviour
         ClearTransforms(falling);
         System.Array.Clear(settled, 0, settled.Length); nextPieces.Clear();
         for (int i = 0; i < 3; i++) nextPieces.Enqueue(Random.Range(0, 7));
-        score = lines = 0; stage = 1; stageTimer = 0; gravityWarning = false; gravityWarningTimer = 0; gravityWarningCue = 0; gravity = Vector2Int.down; boardCamera.transform.rotation = Quaternion.identity; heldType = -1; holdUsed = false; scoreRecorded = false; paused = gameOver = false; dropInterval = .72f; horizontalKeyTimer = downKeyTimer = rotateKeyTimer = 0; activeHorizontalKey = KeyCode.None; Spawn();
+        runStats.Reset(); stage = 1; stageTimer = 0; gravityWarning = false; gravityWarningTimer = 0; gravityWarningCue = 0; gravity = Vector2Int.down; boardCamera.transform.rotation = Quaternion.identity; heldType = -1; holdUsed = false; scoreRecorded = false; paused = gameOver = false; dropInterval = .72f; horizontalKeyTimer = downKeyTimer = rotateKeyTimer = 0; activeHorizontalKey = KeyCode.None; Spawn();
     }
 
     void StartGame()
@@ -392,11 +394,13 @@ public sealed class TetraGame : MonoBehaviour
         int removed = gravity == Vector2Int.down ? ClearDownRows() : gravity == Vector2Int.up ? ClearUpRows() : gravity == Vector2Int.left ? ClearLeftColumns() : ClearRightColumns();
         if (removed > 0)
         {
-            lines += removed; score += removed * removed * 100; dropInterval = Mathf.Max(.12f, .72f - lines * .015f); Play(clearSound);
+            runStats.RecordLineClear(removed); dropInterval = Mathf.Max(.12f, .72f - runStats.LinesCleared * .015f); Play(clearSound);
         }
+        else runStats.RecordLineClear(0);
     }
     void AdvanceStage(int nextStage)
     {
+        runStats.RecordGravityChange();
         stage = nextStage;
         bool inverted = stage % 2 == 0;
         gravity = inverted ? Vector2Int.up : Vector2Int.down;
@@ -478,9 +482,9 @@ public sealed class TetraGame : MonoBehaviour
 
     void RecordScore()
     {
-        if (scoreRecorded || score <= 0) return;
+        if (scoreRecorded || runStats.Score <= 0) return;
         scoreRecorded = true;
-        onlineLeaderboard.Submit(playerName, score);
+        onlineLeaderboard.Submit(playerName, runStats.Score);
     }
 
     void SetStyles()
@@ -553,7 +557,6 @@ public sealed class TetraGame : MonoBehaviour
         DrawBorder(new Rect(16, 15, 398, 790), accent, 3);
         GUI.Label(banner, GravityWarningLabel(), new GUIStyle(messageStyle) { fontSize = 14 });
     }
-
     void OnGUI()
     {
         UpdateLayout();
@@ -566,7 +569,7 @@ public sealed class TetraGame : MonoBehaviour
         DrawBorder(new Rect(16, 15, 398, 790), new Color(.35f, .34f, .73f), 2);
         GUI.Label(new Rect(31, 28, 230, 35), "TETRA", titleStyle);
         GUI.Label(new Rect(33, 62, 250, 20), paused ? "PAUSED - Press P to continue" : "Ready in the menu bar", captionStyle);
-        GUI.Label(new Rect(300, 28, 82, 35), score.ToString("000000"), valueStyle);
+        GUI.Label(new Rect(300, 28, 82, 35), runStats.Score.ToString("000000"), valueStyle);
         DrawRect(board, new Color(.025f, .04f, .12f, .18f)); DrawBorder(board, new Color(.45f, .43f, .86f), 3); DrawGhostOverlay();
         if (gravityWarning) DrawGravityWarning();
         DrawRect(side, new Color(.12f, .10f, .32f)); DrawBorder(side, new Color(.34f, .33f, .69f), 2);
@@ -577,9 +580,10 @@ public sealed class TetraGame : MonoBehaviour
         GUI.Label(new Rect(side.x + 12, side.y + 92, side.width - 20, 18), holdUsed ? "HOLD LOCKED" : "HOLD [SHIFT]", captionStyle);
         if (heldType >= 0) DrawPreview(side.x + 14, side.y + 113, heldType, 11);
         else GUI.Label(new Rect(side.x + 12, side.y + 120, side.width - 24, 18), "EMPTY", rankStyle);
+        GUI.Label(new Rect(side.x + 12, side.y + 140, side.width - 24, 16), runStats.CurrentCombo > 0 ? "COMBO  x" + runStats.CurrentCombo : "COMBO  --", rankStyle);
         DrawGravityProgress(side);
         DrawRect(new Rect(side.x + 12, side.y + 182, side.width - 24, 1), new Color(.38f, .36f, .71f));
-        GUI.Label(new Rect(side.x + 12, side.y + 197, side.width - 24, 20), "LINES", statStyle); GUI.Label(new Rect(side.x + 12, side.y + 212, side.width - 24, 28), lines.ToString(), valueStyle);
+        GUI.Label(new Rect(side.x + 12, side.y + 197, side.width - 24, 20), "LINES", statStyle); GUI.Label(new Rect(side.x + 12, side.y + 212, side.width - 24, 28), runStats.LinesCleared.ToString(), valueStyle);
         GUI.Label(new Rect(side.x + 12, side.y + 257, side.width - 24, 20), "STAGE", statStyle); GUI.Label(new Rect(side.x + 12, side.y + 272, side.width - 24, 28), stage.ToString(), valueStyle);
         DrawRect(new Rect(side.x + 12, side.y + 318, side.width - 24, 1), new Color(.38f, .36f, .71f));
         GUI.Label(new Rect(side.x + 12, side.y + 334, side.width - 20, 20), "UP NEXT", captionStyle);
@@ -590,7 +594,7 @@ public sealed class TetraGame : MonoBehaviour
         DrawOnlineScores(side.x + 12, side.y + 508, side.width - 24, 3);
         GUI.Label(new Rect(25, 716, 380, 20), gameOver ? "Game over. Press R to play again." : "Playing. Keyboard focus is captured.", captionStyle);
         GUI.Label(new Rect(22, 748, 386, 42), "ARROWS Move | UP/X Rotate Right | Z Rotate Left | SPACE Hard Drop\nSHIFT Hold | R Restart | P Pause | L Refresh | ESC Quit", controlStyle);
-        if (gameOver) { DrawRect(new Rect(board.x + 12, 380, board.width - 24, 78), new Color(.05f, .04f, .17f, .92f)); GUI.Label(new Rect(board.x + 12, 388, board.width - 24, 60), "GAME OVER\nPress R to restart", messageStyle); }
+        if (gameOver) gameOverSummary.Draw(pixel, runStats, stage, messageStyle, captionStyle, statStyle, valueStyle);
         else if (paused) { DrawRect(new Rect(board.x + 12, 390, board.width - 24, 55), new Color(.05f, .04f, .17f, .92f)); GUI.Label(new Rect(board.x + 12, 395, board.width - 24, 42), "PAUSED", messageStyle); }
         GUI.matrix = Matrix4x4.identity;
     }
