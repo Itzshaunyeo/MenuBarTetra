@@ -22,7 +22,8 @@ public sealed class TetraGame : MonoBehaviour
     int stage = 1;
     float stageTimer;
     const float StageDuration = 180f;
-    const float GravityWarningSeconds = 3.5f;
+    const float GravityWarningSeconds = 6.5f;
+    const float GravityCountdownStepSeconds = 2f;
     bool gravityWarning;
     float gravityWarningTimer;
     const float KeyRepeatDelay = .18f, KeyRepeatInterval = .065f;
@@ -100,9 +101,10 @@ public sealed class TetraGame : MonoBehaviour
         if (!gravityWarning)
         {
             stageTimer += Time.deltaTime;
-            if (stageTimer >= StageDuration - GravityWarningSeconds)
+            if (stageTimer >= StageDuration)
             {
-                stageTimer = StageDuration - GravityWarningSeconds;
+                // The warning begins only once the visible bar has reached 100%.
+                stageTimer = StageDuration;
                 gravityWarning = true;
                 gravityWarningTimer = GravityWarningSeconds;
             }
@@ -488,7 +490,7 @@ public sealed class TetraGame : MonoBehaviour
     void DrawGravityProgress(Rect side)
     {
         var bar = new Rect(side.x + 12, side.y + 158, side.width - 24, 11);
-        float progress = gravityWarning ? 1f : Mathf.Clamp01(stageTimer / (StageDuration - GravityWarningSeconds));
+        float progress = Mathf.Clamp01(stageTimer / StageDuration);
         Color fill = gravityWarning ? new Color(1f, .62f, .22f) : new Color(.43f, .40f, .96f);
         DrawRect(bar, new Color(.045f, .04f, .14f));
         DrawRect(new Rect(bar.x + 2, bar.y + 2, (bar.width - 4) * progress, bar.height - 4), fill);
@@ -497,7 +499,8 @@ public sealed class TetraGame : MonoBehaviour
     string GravityWarningLabel()
     {
         if (gravityWarningTimer <= .5f) return "GRAVITY SHIFT INCOMING... " + ((stage + 1) % 2 == 0 ? "↑" : "↓");
-        return "GRAVITY SHIFT INCOMING... " + Mathf.CeilToInt(gravityWarningTimer - .5f);
+        int number = Mathf.Clamp(Mathf.CeilToInt((gravityWarningTimer - .5f) / GravityCountdownStepSeconds), 1, 3);
+        return "GRAVITY SHIFT INCOMING... " + number;
     }
     void DrawGravityWarning()
     {
