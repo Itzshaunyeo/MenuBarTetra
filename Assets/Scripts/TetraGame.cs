@@ -26,6 +26,7 @@ public sealed class TetraGame : MonoBehaviour
     const float GravityCountdownStepSeconds = 2f;
     bool gravityWarning;
     float gravityWarningTimer;
+    int gravityWarningCue;
     const float KeyRepeatDelay = .18f, KeyRepeatInterval = .065f;
     float dropTimer, dropInterval = .72f;
     float horizontalKeyTimer, downKeyTimer, rotateKeyTimer;
@@ -38,7 +39,7 @@ public sealed class TetraGame : MonoBehaviour
     Shader gameplayShader;
     AudioSource audioSource;
     AudioSource musicSource;
-    AudioClip moveSound, rotateSound, dropSound, lockSound, holdSound, clearSound, gameOverSound;
+    AudioClip moveSound, rotateSound, dropSound, lockSound, holdSound, clearSound, gameOverSound, warningSound, shiftSound;
     AudioClip musicClip;
     GUIStyle titleStyle, captionStyle, statStyle, valueStyle, controlStyle, messageStyle, rankStyle, menuTitleStyle, startStyle, playerNameStyle;
     Camera boardCamera;
@@ -66,7 +67,7 @@ public sealed class TetraGame : MonoBehaviour
     {
         if (pixel) Destroy(pixel); if (playerNameBackground) Destroy(playerNameBackground);
         if (moveSound) Destroy(moveSound); if (rotateSound) Destroy(rotateSound); if (dropSound) Destroy(dropSound);
-        if (lockSound) Destroy(lockSound); if (holdSound) Destroy(holdSound); if (clearSound) Destroy(clearSound); if (gameOverSound) Destroy(gameOverSound); if (musicClip) Destroy(musicClip);
+        if (lockSound) Destroy(lockSound); if (holdSound) Destroy(holdSound); if (clearSound) Destroy(clearSound); if (gameOverSound) Destroy(gameOverSound); if (warningSound) Destroy(warningSound); if (shiftSound) Destroy(shiftSound); if (musicClip) Destroy(musicClip);
     }
 
     void Update()
@@ -107,15 +108,25 @@ public sealed class TetraGame : MonoBehaviour
                 stageTimer = StageDuration;
                 gravityWarning = true;
                 gravityWarningTimer = GravityWarningSeconds;
+                gravityWarningCue = 0;
+                PlayGravityWarningCue();
             }
             return;
         }
 
         gravityWarningTimer -= Time.deltaTime;
-        if (gravityWarningTimer > 0) return;
+        if (gravityWarningTimer > 0) { PlayGravityWarningCue(); return; }
         gravityWarning = false;
         stageTimer = 0;
         AdvanceStage(stage + 1);
+    }
+
+    void PlayGravityWarningCue()
+    {
+        int cue = gravityWarningTimer <= .5f ? 4 : 4 - Mathf.Clamp(Mathf.CeilToInt((gravityWarningTimer - .5f) / GravityCountdownStepSeconds), 1, 3);
+        if (cue == gravityWarningCue) return;
+        gravityWarningCue = cue;
+        Play(cue == 4 ? shiftSound : warningSound);
     }
 
     void HandleHeldArrowKeys()
@@ -207,6 +218,8 @@ public sealed class TetraGame : MonoBehaviour
         holdSound = MakeArcadeEffect("Hold", 620, 880, .10f, .19f);
         clearSound = MakeArcadeEffect("LineClear", 700, 1240, .19f, .30f);
         gameOverSound = MakeArcadeEffect("GameOver", 260, 75, .38f, .26f);
+        warningSound = MakeArcadeEffect("GravityWarning", 760, 980, .16f, .42f);
+        shiftSound = MakeArcadeEffect("GravityShift", 420, 1320, .24f, .46f);
         musicSource = gameObject.AddComponent<AudioSource>(); musicSource.playOnAwake = false; musicSource.loop = true; musicSource.volume = .14f;
         musicClip = MakeRetroLoop(); musicSource.clip = musicClip; musicSource.Play();
     }
@@ -280,7 +293,7 @@ public sealed class TetraGame : MonoBehaviour
         ClearTransforms(falling); ClearTransforms(ghost);
         System.Array.Clear(settled, 0, settled.Length); nextPieces.Clear();
         for (int i = 0; i < 3; i++) nextPieces.Enqueue(Random.Range(0, 7));
-        score = lines = 0; stage = 1; stageTimer = 0; gravityWarning = false; gravityWarningTimer = 0; gravity = Vector2Int.down; boardCamera.transform.rotation = Quaternion.identity; heldType = -1; holdUsed = false; scoreRecorded = false; paused = gameOver = false; dropInterval = .72f; horizontalKeyTimer = downKeyTimer = rotateKeyTimer = 0; activeHorizontalKey = KeyCode.None; Spawn();
+        score = lines = 0; stage = 1; stageTimer = 0; gravityWarning = false; gravityWarningTimer = 0; gravityWarningCue = 0; gravity = Vector2Int.down; boardCamera.transform.rotation = Quaternion.identity; heldType = -1; holdUsed = false; scoreRecorded = false; paused = gameOver = false; dropInterval = .72f; horizontalKeyTimer = downKeyTimer = rotateKeyTimer = 0; activeHorizontalKey = KeyCode.None; Spawn();
     }
 
     void StartGame()
