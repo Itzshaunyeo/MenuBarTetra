@@ -21,6 +21,9 @@ public sealed class TetraGame : MonoBehaviour
     int stage = 1;
     float stageTimer;
     const float StageDuration = 180f;
+    const float GravityWarningSeconds = 3.5f;
+    bool gravityWarning;
+    float gravityWarningTimer;
     const float KeyRepeatDelay = .18f, KeyRepeatInterval = .065f;
     float dropTimer, dropInterval = .72f;
     float horizontalKeyTimer, downKeyTimer, rotateKeyTimer;
@@ -80,8 +83,7 @@ public sealed class TetraGame : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.Escape)) Application.Quit();
         if (Input.GetKeyDown(KeyCode.P) && !gameOver) paused = !paused;
         if (gameOver || paused) return;
-        stageTimer += Time.deltaTime;
-        if (stageTimer >= StageDuration) { stageTimer -= StageDuration; AdvanceStage(stage + 1); }
+        UpdateGravityShiftTimer();
         HandleHeldArrowKeys();
         if (Input.GetKeyDown(KeyCode.X)) TryRotate(1);
         if (Input.GetKeyDown(KeyCode.Z)) TryRotate(-1);
@@ -92,6 +94,27 @@ public sealed class TetraGame : MonoBehaviour
     }
 
     // Arrow keys act immediately, then repeat after a brief delay like a desktop Tetris game.
+    void UpdateGravityShiftTimer()
+    {
+        if (!gravityWarning)
+        {
+            stageTimer += Time.deltaTime;
+            if (stageTimer >= StageDuration - GravityWarningSeconds)
+            {
+                stageTimer = StageDuration - GravityWarningSeconds;
+                gravityWarning = true;
+                gravityWarningTimer = GravityWarningSeconds;
+            }
+            return;
+        }
+
+        gravityWarningTimer -= Time.deltaTime;
+        if (gravityWarningTimer > 0) return;
+        gravityWarning = false;
+        stageTimer = 0;
+        AdvanceStage(stage + 1);
+    }
+
     void HandleHeldArrowKeys()
     {
         KeyCode horizontalKey = Input.GetKey(KeyCode.LeftArrow) ? KeyCode.LeftArrow : Input.GetKey(KeyCode.RightArrow) ? KeyCode.RightArrow : KeyCode.None;
@@ -254,7 +277,7 @@ public sealed class TetraGame : MonoBehaviour
         ClearTransforms(falling);
         System.Array.Clear(settled, 0, settled.Length); nextPieces.Clear();
         for (int i = 0; i < 3; i++) nextPieces.Enqueue(Random.Range(0, 7));
-        score = lines = 0; stage = 1; stageTimer = 0; gravity = Vector2Int.down; boardCamera.transform.rotation = Quaternion.identity; heldType = -1; holdUsed = false; scoreRecorded = false; paused = gameOver = false; dropInterval = .72f; horizontalKeyTimer = downKeyTimer = rotateKeyTimer = 0; activeHorizontalKey = KeyCode.None; Spawn();
+        score = lines = 0; stage = 1; stageTimer = 0; gravityWarning = false; gravityWarningTimer = 0; gravity = Vector2Int.down; boardCamera.transform.rotation = Quaternion.identity; heldType = -1; holdUsed = false; scoreRecorded = false; paused = gameOver = false; dropInterval = .72f; horizontalKeyTimer = downKeyTimer = rotateKeyTimer = 0; activeHorizontalKey = KeyCode.None; Spawn();
     }
 
     void StartGame()
@@ -468,6 +491,30 @@ public sealed class TetraGame : MonoBehaviour
             DrawBorder(rect, color, 2);
         }
     }
+    void DrawGravityProgress(Rect side)
+    {
+        var bar = new Rect(side.x + 12, side.y + 158, side.width - 24, 11);
+        float progress = gravityWarning ? 1f : Mathf.Clamp01(stageTimer / (StageDuration - GravityWarningSeconds));
+        Color fill = gravityWarning ? new Color(1f, .62f, .22f) : new Color(.43f, .40f, .96f);
+        DrawRect(bar, new Color(.045f, .04f, .14f));
+        DrawRect(new Rect(bar.x + 2, bar.y + 2, (bar.width - 4) * progress, bar.height - 4), fill);
+        DrawBorder(bar, new Color(.60f, .57f, .94f), 1);
+    }
+    string GravityWarningLabel()
+    {
+        if (gravityWarningTimer <= .5f) return "GRAVITY SHIFT INCOMING... " + ((stage + 1) % 2 == 0 ? "↑" : "↓");
+        return "GRAVITY SHIFT INCOMING... " + Mathf.CeilToInt(gravityWarningTimer - .5f);
+    }
+    void DrawGravityWarning()
+    {
+        float flash = .55f + .45f * Mathf.Abs(Mathf.Sin(Time.unscaledTime * 11f));
+        Color accent = Color.Lerp(new Color(1f, .38f, .12f), new Color(1f, .90f, .30f), flash);
+        var banner = new Rect(24, 84, 382, 27);
+        DrawRect(banner, new Color(.25f, .07f, .18f, .96f));
+        DrawBorder(banner, accent, 2);
+        DrawBorder(new Rect(16, 15, 398, 790), accent, 3);
+        GUI.Label(banner, GravityWarningLabel(), new GUIStyle(messageStyle) { fontSize = 14 });
+    }
 
     void OnGUI()
     {
@@ -483,6 +530,7 @@ public sealed class TetraGame : MonoBehaviour
         GUI.Label(new Rect(33, 62, 250, 20), paused ? "PAUSED - Press P to continue" : "Ready in the menu bar", captionStyle);
         GUI.Label(new Rect(300, 28, 82, 35), score.ToString("000000"), valueStyle);
         DrawRect(board, new Color(.025f, .04f, .12f, .18f)); DrawBorder(board, new Color(.45f, .43f, .86f), 3); DrawGhostOverlay(board);
+        if (gravityWarning) DrawGravityWarning();
         DrawRect(side, new Color(.12f, .10f, .32f)); DrawBorder(side, new Color(.34f, .33f, .69f), 2);
         // The queue is initialized before the first frame, but keep the HUD safe while Unity is reloading scripts.
         int[] queued = nextPieces.Count == 3 ? nextPieces.ToArray() : new[] { 0, 0, 0 };
@@ -491,7 +539,7 @@ public sealed class TetraGame : MonoBehaviour
         GUI.Label(new Rect(side.x + 12, side.y + 92, side.width - 20, 18), holdUsed ? "HOLD LOCKED" : "HOLD [SHIFT]", captionStyle);
         if (heldType >= 0) DrawPreview(side.x + 14, side.y + 113, heldType, 11);
         else GUI.Label(new Rect(side.x + 12, side.y + 120, side.width - 24, 18), "EMPTY", rankStyle);
-        GUI.Label(new Rect(side.x + 12, side.y + 157, side.width - 24, 18), "FLIP " + FlipCountdown(), rankStyle);
+        DrawGravityProgress(side);
         DrawRect(new Rect(side.x + 12, side.y + 182, side.width - 24, 1), new Color(.38f, .36f, .71f));
         GUI.Label(new Rect(side.x + 12, side.y + 197, side.width - 24, 20), "LINES", statStyle); GUI.Label(new Rect(side.x + 12, side.y + 212, side.width - 24, 28), lines.ToString(), valueStyle);
         GUI.Label(new Rect(side.x + 12, side.y + 257, side.width - 24, 20), "STAGE", statStyle); GUI.Label(new Rect(side.x + 12, side.y + 272, side.width - 24, 28), stage.ToString(), valueStyle);
@@ -560,10 +608,5 @@ public sealed class TetraGame : MonoBehaviour
             var entry = entries[i];
             GUI.Label(new Rect(x, y + i * 19, width, 18), (i + 1) + ".  " + entry.name + "  " + entry.score.ToString("000000"), new GUIStyle(rankStyle) { alignment = alignment });
         }
-    }
-    string FlipCountdown()
-    {
-        int seconds = Mathf.CeilToInt(Mathf.Max(0, StageDuration - stageTimer));
-        return (seconds / 60).ToString("00") + ":" + (seconds % 60).ToString("00");
     }
 }
