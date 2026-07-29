@@ -392,6 +392,7 @@ public sealed class TetraGame : MonoBehaviour
     void ClearLines()
     {
         int removed = gravity == Vector2Int.down ? ClearDownRows() : gravity == Vector2Int.up ? ClearUpRows() : gravity == Vector2Int.left ? ClearLeftColumns() : ClearRightColumns();
+        SyncSettledVisuals();
         if (removed > 0)
         {
             runStats.RecordLineClear(removed); dropInterval = Mathf.Max(.12f, .72f - runStats.LinesCleared * .015f); Play(clearSound);
@@ -408,6 +409,7 @@ public sealed class TetraGame : MonoBehaviour
         FlipSettledStack(inverted);
         FlipActivePiece();
         SettleStack();
+        SyncSettledVisuals();
         Play(rotateSound);
     }
     // Rotate the established stack around the board's horizontal center so it changes stage with the playfield.
@@ -439,6 +441,12 @@ public sealed class TetraGame : MonoBehaviour
         if (cells == null) return false;
         foreach (var cell in cells) if (pivot.x + cell.x == x && pivot.y + cell.y == y) return true;
         return false;
+    }
+    // The grid is authoritative. Reapply every settled block's cell position after grid mutations.
+    void SyncSettledVisuals()
+    {
+        for (int x = 0; x < Width; x++) for (int y = 0; y < Height; y++)
+            if (settled[x, y]) settled[x, y].position = new Vector3(x, y, 0);
     }
     void SettleStack()
     {
