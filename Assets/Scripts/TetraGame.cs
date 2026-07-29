@@ -9,6 +9,7 @@ public sealed class TetraGame : MonoBehaviour
     static readonly Rect BoardRect = new Rect(26, 130, 245, 570);
     readonly Transform[,] settled = new Transform[Width, Height];
     readonly List<Transform> falling = new List<Transform>(4);
+    readonly List<Transform> ghost = new List<Transform>(4);
     readonly Queue<int> nextPieces = new Queue<int>();
     readonly Color[] colors = {
         new Color(.18f, .83f, 1f), new Color(1f, .77f, .16f), new Color(.72f, .36f, 1f),
@@ -274,7 +275,7 @@ public sealed class TetraGame : MonoBehaviour
     public void Restart()
     {
         foreach (var t in settled) if (t) Destroy(t.gameObject);
-        ClearTransforms(falling);
+        ClearTransforms(falling); ClearTransforms(ghost);
         System.Array.Clear(settled, 0, settled.Length); nextPieces.Clear();
         for (int i = 0; i < 3; i++) nextPieces.Enqueue(Random.Range(0, 7));
         score = lines = 0; stage = 1; stageTimer = 0; gravityWarning = false; gravityWarningTimer = 0; gravity = Vector2Int.down; boardCamera.transform.rotation = Quaternion.identity; heldType = -1; holdUsed = false; scoreRecorded = false; paused = gameOver = false; dropInterval = .72f; horizontalKeyTimer = downKeyTimer = rotateKeyTimer = 0; activeHorizontalKey = KeyCode.None; Spawn();
@@ -305,11 +306,11 @@ public sealed class TetraGame : MonoBehaviour
         // Check before creating visual cubes. A blocked spawn is game over, not an untracked falling piece.
         if (!Valid(cells, pivot))
         {
-            ClearTransforms(falling);
+            ClearTransforms(falling); ClearTransforms(ghost);
             gameOver = true; RecordScore(); Play(gameOverSound); return;
         }
         foreach (var ignored in cells) falling.Add(CreateBlock(colors[type], "Falling Tetromino", .91f));
-        RenderFalling();
+        RenderFalling(); UpdateGhost(type);
     }
     Vector2Int SpawnPivot()
     {
@@ -347,27 +348,27 @@ public sealed class TetraGame : MonoBehaviour
         foreach (var c in test) { var p = at + c; if (p.x < 0 || p.x >= Width || p.y < 0 || p.y >= Height || settled[p.x, p.y]) return false; }
         return true;
     }
-    void TryMove(Vector2Int delta) { if (Valid(cells, pivot + delta)) { pivot += delta; RenderFalling(); Play(moveSound); } }
+    void TryMove(Vector2Int delta) { if (Valid(cells, pivot + delta)) { pivot += delta; RenderFalling(); UpdateGhostColor(); Play(moveSound); } }
     void TryRotate(int direction)
     {
         var rotated = new Vector2Int[cells.Length];
         for (int i = 0; i < cells.Length; i++) rotated[i] = direction > 0 ? new Vector2Int(-cells[i].y, cells[i].x) : new Vector2Int(cells[i].y, -cells[i].x);
-        if (Valid(rotated, pivot)) { cells = rotated; RenderFalling(); Play(rotateSound); }
+        if (Valid(rotated, pivot)) { cells = rotated; RenderFalling(); UpdateGhostColor(); Play(rotateSound); }
     }
     bool StepGravity()
     {
-        if (Valid(cells, pivot + gravity)) { pivot += gravity; RenderFalling(); return true; }
+        if (Valid(cells, pivot + gravity)) { pivot += gravity; RenderFalling(); UpdateGhostColor(); return true; }
         Lock(); return false;
     }
     void Lock()
     {
         for (int i = 0; i < cells.Length; i++) settled[pivot.x + cells[i].x, pivot.y + cells[i].y] = falling[i];
-        falling.Clear(); Play(lockSound); ClearLines(); holdUsed = false; Spawn();
+        falling.Clear(); ClearTransforms(ghost); Play(lockSound); ClearLines(); holdUsed = false; Spawn();
     }
     void HoldPiece()
     {
         if (holdUsed) return;
-        ClearTransforms(falling);
+        ClearTransforms(falling); ClearTransforms(ghost);
         if (heldType < 0) { heldType = currentType; Spawn(); }
         else { int swapType = heldType; heldType = currentType; SpawnType(swapType); }
         holdUsed = true; Play(holdSound);
@@ -388,6 +389,7 @@ public sealed class TetraGame : MonoBehaviour
         boardCamera.transform.rotation = Quaternion.identity;
         FlipSettledStack(inverted);
         SettleStack();
+        UpdateGhostColor();
         Play(rotateSound);
     }
     // Rotate the established stack around the board's horizontal center so it changes stage with the playfield.
@@ -444,7 +446,13 @@ public sealed class TetraGame : MonoBehaviour
     }
     void RenderFalling() { for (int i = 0; i < falling.Count; i++) falling[i].position = new Vector3(pivot.x + cells[i].x, pivot.y + cells[i].y, -.35f); }
     Vector2Int LandingPivot() { var landing = pivot; while (Valid(cells, landing + gravity)) landing += gravity; return landing; }
-    static Color Dim(Color color) { var dim = Color.Lerp(new Color(.08f, .10f, .22f), color, .28f); return new Color(dim.r, dim.g, dim.b, .42f); }
+    void UpdateGhost(int type) { ClearTransforms(ghost); for (int i = 0; i < cells.Length; i++) ghost.Add(CreateBlock(Dim(colors[type]), "Landing Ghost", .70f)); UpdateGhostColor(); }
+    void UpdateGhostColor()
+    {
+        if (gameOver) return; var landing = LandingPivot();
+        for (int i = 0; i < ghost.Count; i++) ghost[i].position = new Vector3(landing.x + cells[i].x, landing.y + cells[i].y, -.08f);
+    }
+    static Color Dim(Color color) { return Color.Lerp(new Color(.08f, .10f, .22f), color, .28f); }
 
     void RecordScore()
     {
@@ -477,20 +485,6 @@ public sealed class TetraGame : MonoBehaviour
     }
     void DrawRect(Rect rect, Color color) { GUI.color = color; GUI.DrawTexture(rect, pixel); GUI.color = Color.white; }
     void DrawBorder(Rect rect, Color color, float thickness) { DrawRect(new Rect(rect.x, rect.y, rect.width, thickness), color); DrawRect(new Rect(rect.x, rect.yMax - thickness, rect.width, thickness), color); DrawRect(new Rect(rect.x, rect.y, thickness, rect.height), color); DrawRect(new Rect(rect.xMax - thickness, rect.y, thickness, rect.height), color); }
-    // The landing aid is UI-only: it never creates scene cubes or participates in collision physics.
-    void DrawGhostOverlay(Rect board)
-    {
-        if (gameOver || cells == null) return;
-        var landing = LandingPivot();
-        float cellWidth = board.width / Width, cellHeight = board.height / Height;
-        Color color = Dim(colors[currentType]);
-        foreach (var cell in cells)
-        {
-            var p = landing + cell;
-            var rect = new Rect(board.x + p.x * cellWidth + 3, board.y + (Height - 1 - p.y) * cellHeight + 3, cellWidth - 6, cellHeight - 6);
-            DrawBorder(rect, color, 2);
-        }
-    }
     void DrawGravityProgress(Rect side)
     {
         var bar = new Rect(side.x + 12, side.y + 158, side.width - 24, 11);
@@ -529,7 +523,7 @@ public sealed class TetraGame : MonoBehaviour
         GUI.Label(new Rect(31, 28, 230, 35), "TETRA", titleStyle);
         GUI.Label(new Rect(33, 62, 250, 20), paused ? "PAUSED - Press P to continue" : "Ready in the menu bar", captionStyle);
         GUI.Label(new Rect(300, 28, 82, 35), score.ToString("000000"), valueStyle);
-        DrawRect(board, new Color(.025f, .04f, .12f, .18f)); DrawBorder(board, new Color(.45f, .43f, .86f), 3); DrawGhostOverlay(board);
+        DrawRect(board, new Color(.025f, .04f, .12f, .18f)); DrawBorder(board, new Color(.45f, .43f, .86f), 3);
         if (gravityWarning) DrawGravityWarning();
         DrawRect(side, new Color(.12f, .10f, .32f)); DrawBorder(side, new Color(.34f, .33f, .69f), 2);
         // The queue is initialized before the first frame, but keep the HUD safe while Unity is reloading scripts.
