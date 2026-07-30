@@ -9,6 +9,7 @@ public sealed class TetraGame : MonoBehaviour
     static readonly Rect BoardRect = new Rect(26, 130, 245, 570);
     readonly Transform[,] settled = new Transform[Width, Height];
     readonly List<Transform> falling = new List<Transform>(4);
+    readonly List<ClearParticle> clearParticles = new List<ClearParticle>();
     readonly Queue<int> nextPieces = new Queue<int>();
     readonly Color[] colors = {
         new Color(.18f, .83f, 1f), new Color(1f, .77f, .16f), new Color(.72f, .36f, 1f),
@@ -43,9 +44,20 @@ public sealed class TetraGame : MonoBehaviour
     AudioClip musicClip;
     GUIStyle titleStyle, captionStyle, statStyle, valueStyle, controlStyle, messageStyle, rankStyle, menuTitleStyle, startStyle, playerNameStyle;
     Camera boardCamera;
+    Vector3 boardCameraBasePosition;
+    float shakeTimer, shakeDuration, shakeStrength;
     OnlineLeaderboardClient onlineLeaderboard;
     float uiScale;
     Vector2 uiOrigin;
+
+    sealed class ClearParticle
+    {
+        public Transform transform;
+        public Vector3 velocity;
+        public float remaining;
+        public readonly float lifetime;
+        public ClearParticle(Transform transform, Vector3 velocity, float lifetime) { this.transform = transform; this.velocity = velocity; this.lifetime = lifetime; remaining = lifetime; }
+    }
 
     void Awake()
     {
@@ -73,6 +85,8 @@ public sealed class TetraGame : MonoBehaviour
     void Update()
     {
         UpdateLayout();
+        UpdateScreenShake();
+        UpdateClearParticles();
         leaderboardRefreshTimer += Time.deltaTime;
         if (leaderboardRefreshTimer >= 15f) { leaderboardRefreshTimer = 0; onlineLeaderboard.Refresh(); }
         if (Input.GetKeyDown(KeyCode.L)) onlineLeaderboard.Refresh();
@@ -200,7 +214,7 @@ public sealed class TetraGame : MonoBehaviour
         var cam = new GameObject("Playfield Camera").AddComponent<Camera>();
         boardCamera = cam;
         cam.depth = 51; cam.clearFlags = CameraClearFlags.SolidColor; cam.orthographic = true; cam.orthographicSize = 11.8f;
-        cam.transform.position = new Vector3(4.5f, 9.5f, -25); cam.backgroundColor = new Color(.035f, .055f, .14f);
+        boardCameraBasePosition = new Vector3(4.5f, 9.5f, -25); cam.transform.position = boardCameraBasePosition; cam.backgroundColor = new Color(.035f, .055f, .14f);
         var light = new GameObject("Soft Light").AddComponent<Light>();
         light.type = LightType.Directional; light.intensity = 1.15f; light.transform.rotation = Quaternion.Euler(32, -25, 0);
         // Slightly thicker than one display pixel so no grid division disappears in Unity's scaled Game view.
@@ -223,6 +237,41 @@ public sealed class TetraGame : MonoBehaviour
         shiftSound = MakeArcadeEffect("GravityShift", 420, 1320, .24f, .46f);
         musicSource = gameObject.AddComponent<AudioSource>(); musicSource.playOnAwake = false; musicSource.loop = true; musicSource.volume = .14f;
         musicClip = MakeRetroLoop(); musicSource.clip = musicClip; musicSource.Play();
+    }
+
+    void UpdateScreenShake()
+    {
+        if (!boardCamera) return;
+        if (shakeTimer <= 0) { boardCamera.transform.position = boardCameraBasePosition; return; }
+        shakeTimer -= Time.unscaledDeltaTime;
+        float fade = Mathf.Clamp01(shakeTimer / shakeDuration);
+        Vector2 offset = Random.insideUnitCircle * shakeStrength * fade;
+        boardCamera.transform.position = boardCameraBasePosition + new Vector3(offset.x, offset.y, 0);
+    }
+    void UpdateClearParticles()
+    {
+        float delta = Time.unscaledDeltaTime;
+        for (int i = clearParticles.Count - 1; i >= 0; i--)
+        {
+            var particle = clearParticles[i];
+            if (!particle.transform) { clearParticles.RemoveAt(i); continue; }
+            particle.remaining -= delta;
+            if (particle.remaining <= 0) { Destroy(particle.transform.gameObject); clearParticles.RemoveAt(i); continue; }
+            particle.velocity += Vector3.down * 5f * delta;
+            particle.transform.position += particle.velocity * delta;
+            particle.transform.localScale = Vector3.one * (.26f * particle.remaining / particle.lifetime);
+        }
+    }
+    void TriggerClearEffects()
+    {
+        shakeDuration = .20f; shakeTimer = shakeDuration; shakeStrength = .19f;
+    }
+    void EmitClearParticle(Transform source, int x, int y)
+    {
+        Color color = source && source.GetComponent<Renderer>() ? source.GetComponent<Renderer>().material.color : new Color(.78f, .68f, 1f);
+        var particle = CreateBlock(color, "Line Clear Particle", .26f);
+        particle.position = new Vector3(x, y, -.7f);
+        clearParticles.Add(new ClearParticle(particle, new Vector3(Random.Range(-2.6f, 2.6f), Random.Range(.7f, 3.3f), 0), .48f));
     }
 
     // Original square-wave effects evoke an arcade cabinet without reusing any game's recorded audio.
@@ -292,6 +341,7 @@ public sealed class TetraGame : MonoBehaviour
     {
         foreach (var t in settled) if (t) Destroy(t.gameObject);
         ClearTransforms(falling);
+        ClearClearParticles();
         System.Array.Clear(settled, 0, settled.Length); nextPieces.Clear();
         for (int i = 0; i < 3; i++) nextPieces.Enqueue(Random.Range(0, 7));
         runStats.Reset(); stage = 1; stageTimer = 0; gravityWarning = false; gravityWarningTimer = 0; gravityWarningCue = 0; gravity = Vector2Int.down; boardCamera.transform.rotation = Quaternion.identity; heldType = -1; holdUsed = false; scoreRecorded = false; paused = gameOver = false; dropInterval = .72f; horizontalKeyTimer = downKeyTimer = rotateKeyTimer = 0; activeHorizontalKey = KeyCode.None; Spawn();
@@ -309,6 +359,7 @@ public sealed class TetraGame : MonoBehaviour
 
     // Destroy is end-of-frame; hide objects first so a removed falling piece cannot flash after Hold or Restart.
     void ClearTransforms(List<Transform> pieces) { foreach (var t in pieces) if (t) { t.gameObject.SetActive(false); Destroy(t.gameObject); } pieces.Clear(); }
+    void ClearClearParticles() { foreach (var particle in clearParticles) if (particle.transform) Destroy(particle.transform.gameObject); clearParticles.Clear(); }
 
     void Spawn()
     {
@@ -466,8 +517,16 @@ public sealed class TetraGame : MonoBehaviour
     }
     bool FullRow(int y) { for (int x = 0; x < Width; x++) if (!settled[x, y]) return false; return true; }
     bool FullColumn(int x) { for (int y = 0; y < Height; y++) if (!settled[x, y]) return false; return true; }
-    void DestroyRow(int y) { for (int x = 0; x < Width; x++) Destroy(settled[x, y].gameObject); }
-    void DestroyColumn(int x) { for (int y = 0; y < Height; y++) Destroy(settled[x, y].gameObject); }
+    void DestroyRow(int y)
+    {
+        TriggerClearEffects();
+        for (int x = 0; x < Width; x++) { EmitClearParticle(settled[x, y], x, y); Destroy(settled[x, y].gameObject); }
+    }
+    void DestroyColumn(int x)
+    {
+        TriggerClearEffects();
+        for (int y = 0; y < Height; y++) { EmitClearParticle(settled[x, y], x, y); Destroy(settled[x, y].gameObject); }
+    }
     int ClearDownRows()
     {
         int removed = 0; for (int y = 0; y < Height; y++) { if (!FullRow(y)) continue; DestroyRow(y); for (int yy = y; yy < Height - 1; yy++) for (int x = 0; x < Width; x++) { settled[x, yy] = settled[x, yy + 1]; if (settled[x, yy]) settled[x, yy].position += Vector3.down; } for (int x = 0; x < Width; x++) settled[x, Height - 1] = null; y--; removed++; } return removed;
