@@ -45,7 +45,8 @@ public sealed class TetraGame : MonoBehaviour
     GUIStyle titleStyle, captionStyle, statStyle, valueStyle, controlStyle, messageStyle, rankStyle, menuTitleStyle, startStyle, playerNameStyle;
     Camera boardCamera;
     Vector3 boardCameraBasePosition;
-    float shakeTimer, shakeDuration, shakeStrength;
+    float shakeTimer, shakeDuration, shakeStrength, clearFlashTimer;
+    const float ClearFlashDuration = .42f;
     OnlineLeaderboardClient onlineLeaderboard;
     float uiScale;
     Vector2 uiOrigin;
@@ -87,6 +88,7 @@ public sealed class TetraGame : MonoBehaviour
         UpdateLayout();
         UpdateScreenShake();
         UpdateClearParticles();
+        if (clearFlashTimer > 0) clearFlashTimer -= Time.unscaledDeltaTime;
         leaderboardRefreshTimer += Time.deltaTime;
         if (leaderboardRefreshTimer >= 15f) { leaderboardRefreshTimer = 0; onlineLeaderboard.Refresh(); }
         if (Input.GetKeyDown(KeyCode.L)) onlineLeaderboard.Refresh();
@@ -259,19 +261,19 @@ public sealed class TetraGame : MonoBehaviour
             if (particle.remaining <= 0) { Destroy(particle.transform.gameObject); clearParticles.RemoveAt(i); continue; }
             particle.velocity += Vector3.down * 5f * delta;
             particle.transform.position += particle.velocity * delta;
-            particle.transform.localScale = Vector3.one * (.26f * particle.remaining / particle.lifetime);
+            particle.transform.localScale = Vector3.one * (.40f * particle.remaining / particle.lifetime);
         }
     }
     void TriggerClearEffects()
     {
-        shakeDuration = .20f; shakeTimer = shakeDuration; shakeStrength = .19f;
+        shakeDuration = .30f; shakeTimer = shakeDuration; shakeStrength = .32f; clearFlashTimer = ClearFlashDuration;
     }
     void EmitClearParticle(Transform source, int x, int y)
     {
         Color color = source && source.GetComponent<Renderer>() ? source.GetComponent<Renderer>().material.color : new Color(.78f, .68f, 1f);
-        var particle = CreateBlock(color, "Line Clear Particle", .26f);
+        var particle = CreateBlock(color, "Line Clear Particle", .40f);
         particle.position = new Vector3(x, y, -.7f);
-        clearParticles.Add(new ClearParticle(particle, new Vector3(Random.Range(-2.6f, 2.6f), Random.Range(.7f, 3.3f), 0), .48f));
+        clearParticles.Add(new ClearParticle(particle, new Vector3(Random.Range(-3.5f, 3.5f), Random.Range(.9f, 4.2f), 0), .70f));
     }
 
     // Original square-wave effects evoke an arcade cabinet without reusing any game's recorded audio.
@@ -342,6 +344,8 @@ public sealed class TetraGame : MonoBehaviour
         foreach (var t in settled) if (t) Destroy(t.gameObject);
         ClearTransforms(falling);
         ClearClearParticles();
+        shakeTimer = clearFlashTimer = 0;
+        if (boardCamera) boardCamera.transform.position = boardCameraBasePosition;
         System.Array.Clear(settled, 0, settled.Length); nextPieces.Clear();
         for (int i = 0; i < 3; i++) nextPieces.Enqueue(Random.Range(0, 7));
         runStats.Reset(); stage = 1; stageTimer = 0; gravityWarning = false; gravityWarningTimer = 0; gravityWarningCue = 0; gravity = Vector2Int.down; boardCamera.transform.rotation = Quaternion.identity; heldType = -1; holdUsed = false; scoreRecorded = false; paused = gameOver = false; dropInterval = .72f; horizontalKeyTimer = downKeyTimer = rotateKeyTimer = 0; activeHorizontalKey = KeyCode.None; Spawn();
@@ -624,6 +628,16 @@ public sealed class TetraGame : MonoBehaviour
         DrawBorder(new Rect(16, 15, 398, 790), accent, 3);
         GUI.Label(banner, GravityWarningLabel(), new GUIStyle(messageStyle) { fontSize = 14 });
     }
+    void DrawLineClearFlash(Rect board)
+    {
+        float pulse = Mathf.Clamp01(clearFlashTimer / ClearFlashDuration);
+        Color accent = Color.Lerp(new Color(1f, .45f, .16f), Color.white, pulse);
+        DrawBorder(board, accent, 5);
+        var banner = new Rect(board.x + 16, board.y + board.height * .42f, board.width - 32, 42);
+        DrawRect(banner, new Color(.20f, .08f, .28f, .78f * pulse));
+        DrawBorder(banner, accent, 2);
+        GUI.Label(banner, "LINE CLEAR!", new GUIStyle(messageStyle) { fontSize = 19 });
+    }
     void OnGUI()
     {
         UpdateLayout();
@@ -638,6 +652,7 @@ public sealed class TetraGame : MonoBehaviour
         GUI.Label(new Rect(33, 62, 250, 20), paused ? "PAUSED - Press P to continue" : "Ready in the menu bar", captionStyle);
         GUI.Label(new Rect(300, 28, 82, 35), runStats.Score.ToString("000000"), valueStyle);
         DrawRect(board, new Color(.025f, .04f, .12f, .18f)); DrawBorder(board, new Color(.45f, .43f, .86f), 3); DrawGhostOverlay();
+        if (clearFlashTimer > 0) DrawLineClearFlash(board);
         if (gravityWarning) DrawGravityWarning();
         DrawRect(side, new Color(.12f, .10f, .32f)); DrawBorder(side, new Color(.34f, .33f, .69f), 2);
         // The queue is initialized before the first frame, but keep the HUD safe while Unity is reloading scripts.
