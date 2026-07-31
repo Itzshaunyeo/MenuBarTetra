@@ -33,7 +33,7 @@ public sealed class TetraGame : MonoBehaviour
     KeyCode activeHorizontalKey = KeyCode.None;
     readonly RunStats runStats = new RunStats();
     readonly GameOverSummaryUI gameOverSummary = new GameOverSummaryUI();
-    bool gameOver, paused, scoreRecorded, gameStarted, holdUsed;
+    bool gameOver, paused, scoreRecorded, gameStarted, holdUsed, quitPrompt, pauseBeforeQuitPrompt, quitToMenuSelected = true;
     string playerName;
     float leaderboardRefreshTimer;
     Texture2D pixel, playerNameBackground;
@@ -94,12 +94,14 @@ public sealed class TetraGame : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.L)) onlineLeaderboard.Refresh();
         if (!gameStarted)
         {
+            if (quitPrompt) { HandleQuitPromptInput(); return; }
             if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter) || Input.GetKeyDown(KeyCode.Space)) StartGame();
-            if (Input.GetKeyDown(KeyCode.Escape)) Application.Quit();
+            if (Input.GetKeyDown(KeyCode.Escape)) OpenQuitPrompt();
             return;
         }
+        if (quitPrompt) { HandleQuitPromptInput(); return; }
         if (Input.GetKeyDown(KeyCode.R)) { Restart(); return; }
-        if (Input.GetKeyDown(KeyCode.Escape)) Application.Quit();
+        if (Input.GetKeyDown(KeyCode.Escape)) { OpenQuitPrompt(); return; }
         if (Input.GetKeyDown(KeyCode.P) && !gameOver) paused = !paused;
         if (gameOver || paused) return;
         runStats.AddPlayTime(Time.deltaTime);
@@ -111,6 +113,37 @@ public sealed class TetraGame : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.Space)) { while (StepGravity()) { } Play(dropSound); }
         dropTimer += Time.deltaTime;
         if (dropTimer >= dropInterval) { dropTimer = 0; StepGravity(); }
+    }
+
+    void OpenQuitPrompt()
+    {
+        pauseBeforeQuitPrompt = paused;
+        if (gameStarted) paused = true;
+        quitToMenuSelected = true;
+        quitPrompt = true;
+    }
+    void CloseQuitPrompt()
+    {
+        quitPrompt = false;
+        if (gameStarted) paused = pauseBeforeQuitPrompt;
+    }
+    void HandleQuitPromptInput()
+    {
+        if (Input.GetKeyDown(KeyCode.Escape)) { CloseQuitPrompt(); return; }
+        if (Input.GetKeyDown(KeyCode.LeftArrow)) quitToMenuSelected = true;
+        if (Input.GetKeyDown(KeyCode.RightArrow)) quitToMenuSelected = false;
+        if (Input.GetKeyDown(KeyCode.M)) { ReturnToMainMenu(); return; }
+        if (Input.GetKeyDown(KeyCode.Q)) { Application.Quit(); return; }
+        if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter) || Input.GetKeyDown(KeyCode.Space))
+        {
+            if (quitToMenuSelected) ReturnToMainMenu(); else Application.Quit();
+        }
+    }
+    void ReturnToMainMenu()
+    {
+        quitPrompt = false; paused = false; gameStarted = false;
+        if (boardCamera) boardCamera.enabled = false;
+        if (musicSource && musicClip && !musicSource.isPlaying) musicSource.Play();
     }
 
     // Arrow keys act immediately, then repeat after a brief delay like a desktop Tetris game.
@@ -638,12 +671,31 @@ public sealed class TetraGame : MonoBehaviour
         DrawBorder(banner, accent, 2);
         GUI.Label(banner, "LINE CLEAR!", new GUIStyle(messageStyle) { fontSize = 19 });
     }
+    void DrawQuitPrompt()
+    {
+        var panel = new Rect(48, 274, 334, 226);
+        DrawRect(panel, new Color(.055f, .04f, .16f, .98f));
+        DrawBorder(panel, new Color(.78f, .64f, 1f), 3);
+        GUI.Label(new Rect(panel.x + 18, panel.y + 22, panel.width - 36, 34), "LEAVE THIS RUN?", new GUIStyle(messageStyle) { fontSize = 22 });
+        GUI.Label(new Rect(panel.x + 20, panel.y + 64, panel.width - 40, 38), "Return to the start screen or\nclose Tetra?", new GUIStyle(statStyle) { alignment = TextAnchor.MiddleCenter });
+        var menuButton = new Rect(panel.x + 20, panel.y + 122, 140, 48);
+        var closeButton = new Rect(panel.x + 174, panel.y + 122, 140, 48);
+        DrawRect(menuButton, quitToMenuSelected ? new Color(.40f, .30f, .90f) : new Color(.18f, .14f, .40f));
+        DrawBorder(menuButton, quitToMenuSelected ? Color.white : new Color(.52f, .47f, .84f), 2);
+        DrawRect(closeButton, !quitToMenuSelected ? new Color(.72f, .24f, .34f) : new Color(.30f, .11f, .24f));
+        DrawBorder(closeButton, !quitToMenuSelected ? Color.white : new Color(.68f, .42f, .60f), 2);
+        if (GUI.Button(menuButton, GUIContent.none, GUIStyle.none)) ReturnToMainMenu();
+        if (GUI.Button(closeButton, GUIContent.none, GUIStyle.none)) Application.Quit();
+        GUI.Label(menuButton, "MAIN MENU", new GUIStyle(captionStyle) { alignment = TextAnchor.MiddleCenter });
+        GUI.Label(closeButton, "CLOSE APP", new GUIStyle(captionStyle) { alignment = TextAnchor.MiddleCenter });
+        GUI.Label(new Rect(panel.x + 15, panel.y + 184, panel.width - 30, 22), "LEFT / RIGHT + ENTER  |  ESC cancel", new GUIStyle(controlStyle) { fontSize = 9 });
+    }
     void OnGUI()
     {
         UpdateLayout();
         SetStyles();
         GUI.matrix = Matrix4x4.TRS(uiOrigin, Quaternion.identity, new Vector3(uiScale, uiScale, 1));
-        if (!gameStarted) { DrawMainMenu(); GUI.matrix = Matrix4x4.identity; return; }
+        if (!gameStarted) { DrawMainMenu(); if (quitPrompt) DrawQuitPrompt(); GUI.matrix = Matrix4x4.identity; return; }
         var board = BoardRect;
         var side = new Rect(286, 130, 128, 570);
         DrawRect(new Rect(16, 15, 398, 100), new Color(.12f, .10f, .32f));
@@ -678,6 +730,7 @@ public sealed class TetraGame : MonoBehaviour
         GUI.Label(new Rect(22, 748, 386, 42), "ARROWS Move | UP/X Rotate Right | Z Rotate Left | SPACE Hard Drop\nSHIFT Hold | R Restart | P Pause | L Refresh | ESC Quit", controlStyle);
         if (gameOver) gameOverSummary.Draw(pixel, runStats, stage, messageStyle, captionStyle, statStyle, valueStyle);
         else if (paused) { DrawRect(new Rect(board.x + 12, 390, board.width - 24, 55), new Color(.05f, .04f, .17f, .92f)); GUI.Label(new Rect(board.x + 12, 395, board.width - 24, 42), "PAUSED", messageStyle); }
+        if (quitPrompt) DrawQuitPrompt();
         GUI.matrix = Matrix4x4.identity;
     }
 
